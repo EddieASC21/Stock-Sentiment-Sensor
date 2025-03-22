@@ -3,6 +3,8 @@ env/
 Docker/__pycache__
 
 venv/
+vi_env/
+.venv/
 
 *.pyc
 __pycache__/
