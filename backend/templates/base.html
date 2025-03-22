@@ -1,9 +1,15 @@
 <!doctype html>
-<title>{% block title %}{% endblock %} - Flaskr</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Kanit&family=Montserrat&family=Open+Sans:wght@500&display=swap" rel="stylesheet">
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{% endblock %} - Flaskr</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit&family=Montserrat&family=Open+Sans:wght@500&display=swap" rel="stylesheet">
+</head>
+
 <body>
     <div class="full-body-container">
         <div class="top-text">
@@ -15,41 +21,65 @@
             </div>
             <div class="input-box" onclick="sendFocus()">
                 <img src="{{ url_for('static', filename='images/mag.png') }}" />
-                <input placeholder="Search for a Keeping up with the Kardashians episode" id="filter-text-val" onkeyup="filterText()">
+                <input 
+                    type="text" 
+                    placeholder="What is being said about a company?" 
+                    id="filter-text-val" 
+                    oninput="filterText()"
+                >
             </div>
         </div>
-        <div id="answer-box">
 
-        </div>
+        <div id="answer-box"></div>
     </div>
 
     <script>
+        let debounceTimeout;
 
-        function answerBoxTemplate(title,titleDesc,rating){
-            return `<div class=''>
-                <h3 class='episode-title'>${title}</h3>
-                <p class='episode-desc'>${titleDesc}</p>
-                <p class='episode-rating'>IMDB Rating: ${rating}</p>
-            </div>`
+        function answerBoxTemplate(responseText) {
+            return `
+                <div class="answer-container">
+                    <h3 class="answer-title">Stock Sentiment Analysis</h3>
+                    <p class="answer-desc">${responseText}</p>
+                </div>
+            `;
         }
 
-        function sendFocus(){
-            document.getElementById('filter-text-val').focus()
+        function sendFocus() {
+            document.getElementById('filter-text-val').focus();
         }
 
-        function filterText(){
-            document.getElementById("answer-box").innerHTML = ""
-            console.log(document.getElementById("filter-text-val").value)
-            fetch("/episodes?" + new URLSearchParams({ title: document.getElementById("filter-text-val").value }).toString())
-            .then((response) => response.json())
-            .then((data) => data.forEach(row => {
-                
-                let tempDiv = document.createElement("div")
-                tempDiv.innerHTML = answerBoxTemplate(row.title,row.descr,row.imdb_rating)
-                document.getElementById("answer-box").appendChild(tempDiv)
-            }));
+        function filterText() {
+            clearTimeout(debounceTimeout);  
 
+            debounceTimeout = setTimeout(() => { 
+                let userQuery = document.getElementById("filter-text-val").value.trim();
+                if (!userQuery) return;  
+
+                console.log("Searching for:", userQuery);
+                fetch("/ask?" + new URLSearchParams({ question: userQuery }).toString())
+                .then(response => response.json())
+                .then(data => {
+                    console.log("API Response:", data);  
+                    
+                   
+                    if (!data.response) {
+                        document.getElementById("answer-box").innerHTML = "<p>No sentiment data available.</p>";
+                        return;
+                    }
+
+                    document.getElementById("answer-box").innerHTML = "";
+
+                    let tempDiv = document.createElement("div");
+                    tempDiv.innerHTML = answerBoxTemplate(data.response);
+                    document.getElementById("answer-box").appendChild(tempDiv);
+                })
+                .catch(error => {
+                    console.error("Error fetching sentiment:", error);
+                    document.getElementById("answer-box").innerHTML = "<p>Error fetching sentiment data.</p>";
+                });
+            }, 500);  // delay so we are not killing the api
         }
-            
     </script>
 </body>
+</html>

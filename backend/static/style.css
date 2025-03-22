@@ -89,3 +89,30 @@
 .episode-desc{
     font-family: 'Montserrat', sans-serif;
 }
+
+.sentiment-container h2 {
+    font-family: 'Kanit', sans-serif;
+    margin-bottom: 10px;
+}
+
+.sentiment-container ul {
+    list-style-type: disc;
+    margin-left: 40px;
+    margin-bottom: 20px;
+}
+
+.sentiment-container p {
+    font-family: 'Montserrat', sans-serif;
+    margin: 5px 0;
+}
+
+.sentiment-container ol {
+    margin-left: 40px;
+    margin-bottom: 20px;
+}
+.sentiment-container li {
+    margin-bottom: 10px;
+}
+.sentiment-container b {
+    color: #d33; 
+}
