@@ -1,85 +1,244 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}{% endblock %} - Flaskr</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Kanit&family=Montserrat&family=Open+Sans:wght@500&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}{% endblock %} - StockSentimentSensor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Kanit&family=Montserrat&family=Open+Sans:wght@500&display=swap" rel="stylesheet" />
+
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Montserrat', sans-serif;
+      background-color: #f3f4f6;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .layout {
+      display: flex;
+      height: 100vh;
+    }
+
+    .left-panel {
+      width: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #0d1017;
+    }
+
+    .stacked-title {
+      display: grid;
+      grid-template-columns: auto auto;
+      row-gap: 14px;
+      align-items: center;
+    }
+
+    .stacked-title .big-s {
+      font-size: 80px;
+      font-weight: 900;
+      color: #dc2626;
+      line-height: 1;
+      text-align: right;
+      padding-right: 16px;
+    }
+
+    .stacked-title .word-part {
+      font-size: 32px;
+      font-weight: 600;
+      color: #ecf8ff;
+    }
+
+    .right-panel {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      align-items: center;
+      background-color: #f9fafb;
+      padding: 60px;
+      box-sizing: border-box;
+      height: 100vh;
+    }
+
+    .search-area {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+    }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      background-color: white;
+      border-radius: 9999px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      padding: 12px 16px;
+      width: 100%;
+      max-width: 500px;
+    }
+
+    .search-box img {
+      width: 20px;
+      height: 20px;
+      margin-right: 10px;
+      object-fit: contain;
+    }
+
+    .search-box input {
+      border: none;
+      outline: none;
+      flex-grow: 1;
+      font-size: 1.1rem;
+      color: #1f2937;
+      background-color: transparent;
+    }
+
+    .answer-box {
+      flex-grow: 1;
+      overflow-y: auto;
+      margin-top: 24px;
+      max-width: 100%;
+      padding-right: 0;
+    }
+
+    .card {
+      background-color: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      padding: 24px;
+      transition: box-shadow 0.3s;
+      margin-bottom: 16px;
+    }
+
+    .card:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #1f2937;
+    }
+
+    .card-desc {
+      color: #374151;
+    }
+
+    .error-text {
+      color: #ef4444;
+    }
+
+    .no-data-text {
+      color: #6b7280;
+    }
+
+    /* Sleek inset scrollbar */
+    .answer-box::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    .answer-box::-webkit-scrollbar-track {
+      background: #f0f0f0;
+      border-radius: 10px;
+    }
+
+    .answer-box::-webkit-scrollbar-thumb {
+      background-color: #dc2626;
+      border-radius: 10px;
+    }
+
+    .answer-box::-webkit-scrollbar-thumb:hover {
+      background-color: #c48a37;
+    }
+
+    .answer-box {
+      scrollbar-width: thin;
+      scrollbar-color: #dc2626 #f0f0f0;
+    }
+  </style>
 </head>
 
 <body>
-    <div class="full-body-container">
-        <div class="top-text">
-            <div class="google-colors">
-                <h1 id="google-4">4</h1>
-                <h1 id="google-3">3</h1>
-                <h1 id="google-0-1">0</h1>
-                <h1 id="google-0-2">0</h1>
-            </div>
-            <div class="input-box" onclick="sendFocus()">
-                <img src="{{ url_for('static', filename='images/mag.png') }}" />
-                <input 
-                    type="text" 
-                    placeholder="What is being said about a company?" 
-                    id="filter-text-val" 
-                    oninput="filterText()"
-                >
-            </div>
-        </div>
-
-        <div id="answer-box"></div>
+  <div class="layout">
+    <!-- Left half with centered stacked title -->
+    <div class="left-panel">
+      <div class="stacked-title">
+        <div class="big-s">S</div>
+        <div class="word-part">tock</div>
+        <div class="big-s">S</div>
+        <div class="word-part">entiment</div>
+        <div class="big-s">S</div>
+        <div class="word-part">ensor</div>
+      </div>
     </div>
 
-    <script>
-        let debounceTimeout;
+    <!-- Right half with search and scrollable results -->
+    <div class="right-panel">
+      <div class="search-area">
+        <div class="search-box" onclick="sendFocus()">
+          <img src="{{ url_for('static', filename='images/mag.png') }}" alt="Search" />
+          <input 
+            type="text" 
+            id="filter-text-val" 
+            placeholder="Type a stock-related query..." 
+            oninput="filterText()" 
+          />
+        </div>
+        <div id="answer-box" class="answer-box"></div>
+      </div>
+    </div>
+  </div>
 
-        function answerBoxTemplate(responseText) {
-            return `
-                <div class="answer-container">
-                    <h3 class="answer-title">Stock Sentiment Analysis</h3>
-                    <p class="answer-desc">${responseText}</p>
-                </div>
-            `;
-        }
+  <script>
+    let debounceTimeout;
 
-        function sendFocus() {
-            document.getElementById('filter-text-val').focus();
-        }
+    function answerBoxTemplate(responseText) {
+      return `
+        <div class="card">
+          <h3 class="card-title">Stock Sentiment Analysis</h3>
+          <p class="card-desc">${responseText}</p>
+        </div>
+      `;
+    }
 
-        function filterText() {
-            clearTimeout(debounceTimeout);  
+    function sendFocus() {
+      document.getElementById('filter-text-val').focus();
+    }
 
-            debounceTimeout = setTimeout(() => { 
-                let userQuery = document.getElementById("filter-text-val").value.trim();
-                if (!userQuery) return;  
+    function filterText() {
+      clearTimeout(debounceTimeout);
 
-                console.log("Searching for:", userQuery);
-                fetch("/ask?" + new URLSearchParams({ question: userQuery }).toString())
-                .then(response => response.json())
-                .then(data => {
-                    console.log("API Response:", data);  
-                    
-                   
-                    if (!data.response) {
-                        document.getElementById("answer-box").innerHTML = "<p>No sentiment data available.</p>";
-                        return;
-                    }
+      debounceTimeout = setTimeout(() => {
+        let userQuery = document.getElementById("filter-text-val").value.trim();
+        if (!userQuery) return;
 
-                    document.getElementById("answer-box").innerHTML = "";
+        fetch("/ask?" + new URLSearchParams({ question: userQuery }).toString())
+          .then(response => response.json())
+          .then(data => {
+            const answerBox = document.getElementById("answer-box");
+            answerBox.innerHTML = "";
 
-                    let tempDiv = document.createElement("div");
-                    tempDiv.innerHTML = answerBoxTemplate(data.response);
-                    document.getElementById("answer-box").appendChild(tempDiv);
-                })
-                .catch(error => {
-                    console.error("Error fetching sentiment:", error);
-                    document.getElementById("answer-box").innerHTML = "<p>Error fetching sentiment data.</p>";
-                });
-            }, 500);  // delay so we are not killing the api
-        }
-    </script>
+            if (!data.response) {
+              answerBox.innerHTML = "<p class='no-data-text'>No sentiment data available.</p>";
+              return;
+            }
+
+            let tempDiv = document.createElement("div");
+            tempDiv.innerHTML = answerBoxTemplate(data.response);
+            answerBox.appendChild(tempDiv);
+          })
+          .catch(error => {
+            console.error("Error fetching sentiment:", error);
+            document.getElementById("answer-box").innerHTML = "<p class='error-text'>Error fetching sentiment data.</p>";
+          });
+      }, 500);
+    }
+  </script>
 </body>
 </html>
