@@ -28,3 +28,4 @@ spacy==3.7.4
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0-py3-none-any.whl
 requests==2.32.3
 scikit-learn==1.6.1
+nltk==3.8.1

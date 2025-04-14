@@ -3,50 +3,32 @@ import json
 import pandas as pd
 
 def load_data():
-    """Load and preprocess the data from JSON file."""
     current_dir = os.path.dirname(os.path.abspath(__file__))
     json_file_path = os.path.join(current_dir, "../init.json")
-
+    
     with open(json_file_path, 'r', encoding='utf-8') as infile:
         raw_data = json.load(infile)
-
-    df = pd.DataFrame(raw_data if isinstance(raw_data, list) else [raw_data])
-    df['ticker'] = df.get('ticker', 'NONE')
-    df['ticker'] = df['ticker'].fillna('NONE')
-    df['title'] = df['title'].fillna('')
-    df['text'] = df['text'].fillna('')
-    df["combined_text"] = df["title"] + " " + df["text"]
     
+    records = raw_data if isinstance(raw_data, list) else [raw_data]
+    processed_records = []
+    for rec in records:
+        if "ticker" in rec:
+            rec['ticker'] = rec.get('ticker', 'NONE')
+            rec['title'] = rec.get('title', '')
+            rec['text'] = rec.get('text', '')
+            rec['url'] = rec.get('url', '')
+        elif "thread" in rec:
+            rec['ticker'] = rec.get('ticker', 'NONE')
+            rec['title'] = rec.get('thread', {}).get('title', rec.get('title', ''))
+            rec['text'] = rec.get('text', '')
+            rec['url'] = rec.get('thread', {}).get('url', rec.get('url', ''))
+        else:
+            rec['ticker'] = rec.get('ticker', 'NONE')
+            rec['title'] = rec.get('title', '')
+            rec['text'] = rec.get('text', '')
+            rec['url'] = rec.get('url', '')
+        processed_records.append(rec)
+    
+    df = pd.DataFrame(processed_records)
+    df["combined_text"] = df["title"] + " " + df["text"]
     return df
-
-# we also have a data set, json file, with a bunch of company names and their respective ticker
-company_map = {
-    "tesla": "TSLA",
-    "nio": "NIO",
-    "apple": "AAPL",
-    "gme": "GME",
-    "amazon": "AMZN",
-    "google": "GOOGL",
-    "microsoft": "MSFT",
-    "facebook": "META",
-    "netflix": "NFLX",
-    "nvidia": "NVDA",
-    "intel": "INTC",
-    "uber": "UBER",
-    "lyft": "LYFT",
-    "salesforce": "CRM",
-    "adobe": "ADBE",
-    "twitter": "TWTR",
-    "snap": "SNAP",
-    "pinterest": "PINS",
-    "shopify": "SHOP",
-    "spotify": "SPOT",
-    "square": "SQ"
-}
-
-def map_company_to_ticker(user_query: str):
-    words = user_query.lower().split()
-    for company, ticker in company_map.items():
-        if company in words:
-            return ticker
-    return None

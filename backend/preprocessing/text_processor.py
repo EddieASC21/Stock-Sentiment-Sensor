@@ -3,18 +3,17 @@ import spacy
 nlp_spacy = spacy.load("en_core_web_sm")
 
 def custom_tokenizer(text):
-    """Tokenize, lemmatize, and remove stopwords/punctuation using spaCy."""
     doc = nlp_spacy(text)
     tokens = [token.lemma_.lower() for token in doc if not token.is_stop and not token.is_punct]
     return tokens
 
-# my thought is that we have a data set with the words or the data set we have now, when cleaned and lemmatized is used as positive and negative sentiment 
 extended_positive = {
     "bullish": ["bullish", "optimistic", "confident", "upbeat", "growth", "gain", "soar", "strong", "improving", "resilient"],
     "buy":     ["buy", "purchase", "accumulate", "long", "invest", "hold"],
     "moon":    ["moon", "rocket", "rally", "surge", "explode", "skyrocket"],
     "call":    ["call", "calls", "upgrade", "outperform", "positive", "improve"]
 }
+
 extended_negative = {
     "bearish": ["bearish", "pessimistic", "uncertain", "fear", "down", "decline", "drop", "weak", "struggling"],
     "sell":    ["sell", "dump", "liquidate", "short", "divest"],
@@ -40,7 +39,7 @@ def weak_label(text):
         return 0
     else:
         return None
-    
+
 def highlight_top_words(text, top_words):
     tokens = text.split()
     new_tokens = []
