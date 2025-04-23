@@ -1,4 +1,5 @@
 import requests
+import yfinance as yf
 
 # hard code mapping of ticker to company if the api expires
 company_map = {
@@ -22,7 +23,46 @@ company_map = {
     "pinterest": "PINS",
     "shopify": "SHOP",
     "spotify": "SPOT",
-    "square": "SQ"
+    "square": "SQ",
+    "berkshire hathaway": "BRK.A",
+    "jpmorgan chase": "JPM",
+    "walmart": "WMT",
+    "coca‑cola": "KO",
+    "pepsi": "PEP",
+    "disney": "DIS",
+    "nike": "NKE",
+    "starbucks": "SBUX",
+    "paypal": "PYPL",
+    "visa": "V",
+    "mastercard": "MA",
+    "procter & gamble": "PG",
+    "johnson & johnson": "JNJ",
+    "ibm": "IBM",
+    "exxon mobil": "XOM",
+    "chevron": "CVX",
+    "pfizer": "PFE",
+    "merck": "MRK",
+    "google parent": "GOOG",
+    "alphabet": "GOOGL",
+    "at&t": "T",
+    "verizon": "VZ",
+    "comcast": "CMCSA",
+    "charter communications": "CHTR",
+    "netflix": "NFLX",
+    "pepsico": "PEP",
+    "caterpillar": "CAT",
+    "3m": "MMM",
+    "dow": "DOW",
+    "boeing": "BA",
+    "general electric": "GE",
+    "gm": "GM",
+    "ford": "F",
+    "tesla motors": "TSLA",
+    "elon musk": "TSLA",
+    "zoom": "ZM",
+    "square": "SQ",
+    "robinhood": "HOOD",
+    "coinbase": "COIN",
 }
 
 def get_ticker_from_api(company_name: str) -> str:
@@ -41,11 +81,34 @@ def get_ticker_from_api(company_name: str) -> str:
         print("Error in get_ticker_from_api:", e)
         return None
 
-def map_company_to_ticker(user_query: str) -> str:
-    company_name = user_query.strip()
-    ticker = get_ticker_from_api(company_name)
-    if ticker is None:
-        for comp, tkr in company_map.items():
-            if comp.lower() in company_name.lower():
-                return tkr
-    return ticker
+def get_ticker_via_yfinance(name: str) -> str | None:
+    try:
+        searcher = yf.Search(name)
+        if searcher.results:
+            return searcher.results[0]['symbol']
+        
+        candidate = yf.Ticker(name)
+        hist = candidate.history(period="1d")
+        if not hist.empty:
+            return name.upper()
+    except Exception:
+        pass
+    return None
+    
+def map_company_to_ticker(user_query: str) -> str | None:
+    """Map a company name or search query to a ticker symbol"""
+    name = user_query.strip()
+
+    for comp, tkr in company_map.items():
+        if comp.lower() in name.lower():
+            return tkr
+    
+    ticker = get_ticker_via_yfinance(name)
+    if ticker:
+        return ticker
+
+    ticker = get_ticker_from_api(name)
+    if ticker:
+        return ticker
+
+    return None

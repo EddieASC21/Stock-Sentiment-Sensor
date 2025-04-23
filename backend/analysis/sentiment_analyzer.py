@@ -1,7 +1,8 @@
 import numpy as np
 import os
 import pandas as pd
-from datetime import datetime
+import yfinance as yf
+from datetime import datetime, timedelta
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.pipeline import Pipeline
@@ -14,6 +15,29 @@ from data_loader import company_map
 from preprocessing.text_processor import custom_tokenizer, weak_label, highlight_top_words, explain_post_sentiment
 from helpers.vote_helper import get_vote_counts
 
+def compute_market_statistics(ticker: str) -> dict:
+    end = datetime.now()
+    start = end - timedelta(days=30)
+    hist = yf.Ticker(ticker).history(start=start, end=end)
+    if hist.empty:
+        return {}
+    hist["ret"] = hist["Close"].pct_change().fillna(0)
+    mean_ret   = hist["ret"].mean()
+    vol        = hist["ret"].std()
+    cum_return = hist["Close"].iloc[-1] / hist["Close"].iloc[0] - 1
+
+    cumprod    = (1 + hist["ret"]).cumprod()
+    running_max= cumprod.cummax()
+    drawdowns  = (cumprod - running_max) / running_max
+    max_dd     = drawdowns.min()
+
+    return {
+        "Mean Daily Return": mean_ret,
+        "Daily Volatility":  vol,
+        "1M Cumulative Return": cum_return,
+        "Max Drawdown":      max_dd
+    }
+    
 class SentimentAnalyzer:
     def __init__(self, df, clf_pipeline, rank_pipeline):
         self.df = df
@@ -108,11 +132,86 @@ class SentimentAnalyzer:
         avg_rating = filtered['rating'].mean()
         count = len(filtered)
         return avg_rating, count
+    
+    def _render_market_report(self, ticker: str) -> str:
+        tkr = yf.Ticker(ticker)
+        try:
+            fast = tkr.fast_info
+            price = fast.get("lastPrice", np.nan)
+            prev  = fast.get("previousClose", np.nan)
+            day_low  = fast.get("dayLow",  np.nan)
+            day_high = fast.get("dayHigh", np.nan)
+
+            if np.isfinite(price) and np.isfinite(prev) and prev != 0:
+                trend_pct = (price - prev) / prev * 100
+                trend_str = f"{trend_pct:+.2f}%"
+            else:
+                trend_str = "N/A"
+
+            stats = compute_market_statistics(ticker)
+            mean_ret = stats.get("Mean Daily Return", 0)
+            vol = stats.get("Daily Volatility", 0)
+            cum_1m = stats.get("1M Cumulative Return", 0)
+            max_dd = stats.get("Max Drawdown", 0)
+            mean_str = f"{mean_ret:.2%}"
+            vol_str = f"{vol:.2%}"
+            cum1m_str = f"{cum_1m:.2%}"
+            maxdd_str = f"{max_dd:.2%}"
+
+            
+            fin_dict = tkr.get_financials(as_dict=True) or {}
+            if fin_dict:
+                latest = max(fin_dict.keys())
+                metrics= fin_dict[latest]
+                rev = metrics.get("TotalRevenue")
+                ni  = metrics.get("NetIncome")
+                rev_str = f"${rev:,.0f}" if isinstance(rev, (int, float)) else "N/A"
+                ni_str  = f"${ni:,.0f}"  if isinstance(ni,  (int, float)) else "N/A"
+                date_str= latest.date().isoformat()
+            else:
+                rev_str = ni_str = date_str = "N/A"
+
+            html = f"""
+            <div class="market-report">
+            <h2 class="mr-title">{ticker.upper()} Market Report</h2>
+
+            <section class="mr-price">
+                <h3>Price & Trend</h3>
+                <p><strong>Current:</strong> ${price:,.2f} 
+                &nbsp;|&nbsp; <strong>Prev Close:</strong> ${prev:,.2f}</p>
+                <p><strong>Trend (1d):</strong> {trend_str}</p>
+                <p><strong>Day Range:</strong> ${day_low:,.2f} – ${day_high:,.2f}</p>
+            </section>
+
+            <section class="mr-stats">
+                <h3>1-Month Statistics</h3>
+                <ul>
+                <li><strong>Mean Daily Return:</strong> {mean_str}</li>
+                <li><strong>Daily Volatility:</strong> {vol_str}</li>
+                <li><strong>Cumulative Return (30d):</strong> {cum1m_str}</li>
+                <li><strong>Max Drawdown:</strong> {maxdd_str}</li>
+                </ul>
+            </section>
+
+            <section class="mr-financials">
+                <h3>Latest Annual Financials ({date_str})</h3>
+                <ul>
+                <li><strong>Total Revenue:</strong> {rev_str}</li>
+                <li><strong>Net Income:</strong> {ni_str}</li>
+                </ul>
+            </section>
+            </div>
+            """
+            return html
+
+        except Exception as e:
+            return f"<p>Error fetching market data for <b>{ticker.upper()}</b>: {e}</p>"
 
     def analyze_sentiment_for_ticker(self, ticker: str, intent: str = None) -> str:
+        intent = (intent or "").lower()
         sub_df = self.df[self.df['ticker'].str.upper() == ticker.upper()]
         if sub_df.empty:
-            return f"<p>No recent discussion found for ticker: <b>{ticker.upper()}</b>.</p>"
+            return self._render_market_report(ticker)
 
         final_preds = self._compute_final_predictions(sub_df)
         sub_df = sub_df.copy()
@@ -122,7 +221,8 @@ class SentimentAnalyzer:
         neg_count = (sub_df["final_pred"] == 0).sum()
         total = pos_count + neg_count
         if total == 0:
-            return f"<p>Sentiment about <b>{ticker.upper()}</b> is unclear or neutral.</p>"
+            return self._render_market_report(ticker)
+        
         overall_tone = "Positive" if pos_count > neg_count else ("Negative" if neg_count > pos_count else "Mixed")
 
         feedback_avg, feedback_count = self._get_feedback_stats_for_ticker(ticker)

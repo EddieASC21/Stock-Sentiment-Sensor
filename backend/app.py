@@ -41,7 +41,17 @@ def ask():
     question = request.args.get("question", "").strip()
     if not question:
         return jsonify({"response": "No question provided"}), 400
-
+    
+    ticker = map_company_to_ticker(question)
+    if not ticker:
+        return jsonify({"response": "Company not recognized"}), 400
+    
+    low = question.lower()
+    fallback = ["market", "financial", "report", "return", "price", "overview"]
+    if any(kw in low for kw in fallback):
+        market_html = sentiment_analyzer._render_market_report(ticker)
+        return jsonify({"response": market_html})
+    
     scores = sid.polarity_scores(question)
     compound = scores['compound']
     if compound >= 0.05:
@@ -50,10 +60,6 @@ def ask():
         intent = "negative"
     else:
         intent = ""
-
-    ticker = map_company_to_ticker(question)
-    if not ticker:
-        return jsonify({"response": "Company not recognized"}), 400
 
     sentiment_html = sentiment_analyzer.analyze_sentiment_for_ticker(ticker, intent=intent)
     return jsonify({"response": sentiment_html})
