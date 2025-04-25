@@ -218,7 +218,7 @@ class SentimentAnalyzer:
             posts.append(post)
         
         # 5) Optional overview header
-        overview = ""
+        overview = " "
         if ticker:
             total = len(filtered_df)
             preds = filtered_df.get("final_pred")
@@ -236,9 +236,10 @@ class SentimentAnalyzer:
         
         # Create header HTML
         header_html = f"""
-        <div class="search-comments">
+        <div>
         {overview}
         <h3>Search Results for "{query}"</h3>
+        </div>
         """
         
         # Create footer HTML
