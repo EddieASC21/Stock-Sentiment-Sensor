@@ -1,114 +1,60 @@
-import requests
-import yfinance as yf
+import json
+import re
+from pathlib import Path
 
-# hard code mapping of ticker to company if the api expires
-company_map = {
-    "apple": "AAPL",
-    "tesla": "TSLA",
-    "nio": "NIO",
-    "gme": "GME",
-    "amazon": "AMZN",
-    "google": "GOOGL",
-    "microsoft": "MSFT",
-    "facebook": "META",
-    "netflix": "NFLX",
-    "nvidia": "NVDA",
-    "intel": "INTC",
-    "uber": "UBER",
-    "lyft": "LYFT",
-    "salesforce": "CRM",
-    "adobe": "ADBE",
-    "twitter": "TWTR",
-    "snap": "SNAP",
-    "pinterest": "PINS",
-    "shopify": "SHOP",
-    "spotify": "SPOT",
-    "square": "SQ",
-    "berkshire hathaway": "BRK.A",
-    "jpmorgan chase": "JPM",
-    "walmart": "WMT",
-    "coca‑cola": "KO",
-    "pepsi": "PEP",
-    "disney": "DIS",
-    "nike": "NKE",
-    "starbucks": "SBUX",
-    "paypal": "PYPL",
-    "visa": "V",
-    "mastercard": "MA",
-    "procter & gamble": "PG",
-    "johnson & johnson": "JNJ",
-    "ibm": "IBM",
-    "exxon mobil": "XOM",
-    "chevron": "CVX",
-    "pfizer": "PFE",
-    "merck": "MRK",
-    "google parent": "GOOG",
-    "alphabet": "GOOGL",
-    "at&t": "T",
-    "verizon": "VZ",
-    "comcast": "CMCSA",
-    "charter communications": "CHTR",
-    "netflix": "NFLX",
-    "pepsico": "PEP",
-    "caterpillar": "CAT",
-    "3m": "MMM",
-    "dow": "DOW",
-    "boeing": "BA",
-    "general electric": "GE",
-    "gm": "GM",
-    "ford": "F",
-    "tesla motors": "TSLA",
-    "elon musk": "TSLA",
-    "zoom": "ZM",
-    "square": "SQ",
-    "robinhood": "HOOD",
-    "coinbase": "COIN",
-}
+BASE = Path(__file__).parent
+FILE_PATH = BASE / "company_and_tickers_map.json"
 
-def get_ticker_from_api(company_name: str) -> str:
-    api_key = "iAyH6422iBmfa0Fh6y2VQAuIP1SR6GkO"  
-    url = f"https://financialmodelingprep.com/api/v3/search?query={company_name}&limit=1&exchange=NASDAQ&apikey={api_key}"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        results = response.json()
-        if results and isinstance(results, list) and len(results) > 0:
-            ticker = results[0].get("symbol")
-            return ticker
-        else:
-            return None
-    except Exception as e:
-        print("Error in get_ticker_from_api:", e)
-        return None
+if not FILE_PATH.exists():
+    raise FileNotFoundError(f"Cannot find {FILE_PATH!r}")
 
-def get_ticker_via_yfinance(name: str) -> str | None:
-    try:
-        searcher = yf.Search(name)
-        if searcher.results:
-            return searcher.results[0]['symbol']
-        
-        candidate = yf.Ticker(name)
-        hist = candidate.history(period="1d")
-        if not hist.empty:
-            return name.upper()
-    except Exception:
-        pass
-    return None
-    
+# Load
+with FILE_PATH.open("r", encoding="utf-8") as f:
+    raw = json.load(f)
+
+# Normalize into simple { title: ticker } dict
+company_map: dict[str,str] = {}
+
+if isinstance(raw, dict):
+    for key, entry in raw.items():
+        title = entry["title"].strip().lower()
+        ticker = entry["ticker"].strip().upper()
+        company_map[title] = ticker
+
+print(f"Loaded {len(company_map)} companies.")
+
+# Build growing-prefix alias map
+alias_map: dict[str,str] = {}
+
+# Sort by number of words in the (raw) title
+sorted_companies = sorted(
+    company_map.items(),
+    key=lambda kv: len(kv[0].split())
+)
+
+for full_name, ticker in sorted_companies:
+    # strip out punctuation and split into words
+    clean = re.sub(r"[^a-z0-9 ]", "", full_name)
+    words = clean.split()
+    for i in range(1, len(words) + 1):
+        alias = " ".join(words[:i])
+        # only set on first encounter
+        alias_map.setdefault(alias, ticker)
+
 def map_company_to_ticker(user_query: str) -> str | None:
-    """Map a company name or search query to a ticker symbol"""
-    name = user_query.strip()
-
-    for comp, tkr in company_map.items():
-        if comp.lower() in name.lower():
-            return tkr
-    
-    ticker = get_ticker_via_yfinance(name)
-    if ticker:
-        return ticker
-
-    ticker = get_ticker_from_api(name)
-    if ticker:
-        return ticker
-
+    q = re.sub(r"[^a-z0-9 ]", "", user_query.lower()).strip()
+    if q in alias_map:
+        return alias_map[q]
+    # longest-prefix match
+    for alias in sorted(alias_map, key=len, reverse=True):
+        if q.startswith(alias):
+            return alias_map[alias]
     return None
+
+def valid_ticker(ticker: str) -> bool:
+    return ticker in alias_map.values()
+
+if __name__ == "__main__":
+    # Smoke-test
+    for name in ["apple", "apple inc", "apple hospitality", "pineapple", "pineapple express"]:
+        print(f"{name!r} → {map_company_to_ticker(name)}")

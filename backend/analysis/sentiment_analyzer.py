@@ -1,7 +1,6 @@
 import numpy as np
 import os
 import pandas as pd
-import yfinance as yf
 from datetime import datetime, timedelta
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
@@ -15,30 +14,8 @@ from data_loader import company_map
 from preprocessing.text_processor import custom_tokenizer, weak_label, highlight_top_words, explain_post_sentiment
 from helpers.vote_helper import get_vote_counts
 
-def compute_market_statistics(ticker: str) -> dict:
-    end = datetime.now()
-    start = end - timedelta(days=30)
-    hist = yf.Ticker(ticker).history(start=start, end=end)
-    if hist.empty:
-        return {}
-    hist["ret"] = hist["Close"].pct_change().fillna(0)
-    mean_ret   = hist["ret"].mean()
-    vol        = hist["ret"].std()
-    cum_return = hist["Close"].iloc[-1] / hist["Close"].iloc[0] - 1
-
-    cumprod    = (1 + hist["ret"]).cumprod()
-    running_max= cumprod.cummax()
-    drawdowns  = (cumprod - running_max) / running_max
-    max_dd     = drawdowns.min()
-
-    return {
-        "Mean Daily Return": mean_ret,
-        "Daily Volatility":  vol,
-        "1M Cumulative Return": cum_return,
-        "Max Drawdown":      max_dd
-    }
-    
 class SentimentAnalyzer:
+    
     def __init__(self, df, clf_pipeline, rank_pipeline):
         self.df = df
         self.clf_pipeline = clf_pipeline
@@ -48,59 +25,6 @@ class SentimentAnalyzer:
         self.classifier = self.clf_pipeline.named_steps['clf']
         self.feature_names = self.vectorizer.get_feature_names_out()
         self.coeffs = self.classifier.coef_[0]
-
-    def search_documents(self, query: str, top_n: int = 10):
-        query_vec = self.rank_pipeline.transform([query])[0]
-        similarities = []
-        for idx, row in self.df.iterrows():
-            doc_vec = row["rank_vector"]
-            sim = compute_cosine(np.array(query_vec), np.array(doc_vec))
-            similarities.append(sim)
-        self.df["sim_score"] = similarities
-        results = self.df.sort_values("sim_score", ascending=False).head(top_n)
-        results_html = "<ol>"
-        for _, row in results.iterrows():
-            results_html += (
-                f"<li><strong>{row['ticker']}</strong> - {row['title']}<br>"
-                f"<em>Score: {round(row['sim_score'],2)}</em></li>"
-            )
-        results_html += "</ol>"
-        return results_html
-
-    def rank_stocks(self):
-        final_preds = self._compute_final_predictions(self.df)
-        self.df["final_pred"] = final_preds
-
-        ranking_results = []
-        for company, ticker in company_map.items():
-            sub_df = self.df[self.df['ticker'].str.upper() == ticker.upper()]
-            if sub_df.empty:
-                continue
-            pos_count = (sub_df["final_pred"] == 1).sum()
-            neg_count = (sub_df["final_pred"] == 0).sum()
-            total = pos_count + neg_count
-            if total == 0:
-                continue
-            net_score = (pos_count - neg_count) / total  
-            ranking_results.append({
-                "company": company,
-                "ticker": ticker,
-                "total_posts": total,
-                "positive": pos_count,
-                "negative": neg_count,
-                "net_score": round(net_score, 2)
-            })
-        ranking_results = sorted(ranking_results, key=lambda x: x["net_score"], reverse=True)
-        html = "<ol>"
-        for r in ranking_results:
-            html += f"<li><strong>{r['ticker']}</strong> ({r['company']}): {r['net_score']} [Total: {r['total_posts']}, +:{r['positive']}, -:{r['negative']}]</li>"
-        html += "</ol>"
-        return f"""
-        <div class="ranking-container">
-          <h2>Stock Ranking by Sentiment</h2>
-          {html}
-        </div>
-        """
 
     def _compute_final_predictions(self, sub_df):
         base_preds = self.clf_pipeline.predict(sub_df["combined_text"])
@@ -132,80 +56,6 @@ class SentimentAnalyzer:
         avg_rating = filtered['rating'].mean()
         count = len(filtered)
         return avg_rating, count
-    
-    def _render_market_report(self, ticker: str) -> str:
-        tkr = yf.Ticker(ticker)
-        try:
-            fast = tkr.fast_info
-            price = fast.get("lastPrice", np.nan)
-            prev  = fast.get("previousClose", np.nan)
-            day_low  = fast.get("dayLow",  np.nan)
-            day_high = fast.get("dayHigh", np.nan)
-
-            if np.isfinite(price) and np.isfinite(prev) and prev != 0:
-                trend_pct = (price - prev) / prev * 100
-                trend_str = f"{trend_pct:+.2f}%"
-            else:
-                trend_str = "N/A"
-
-            stats = compute_market_statistics(ticker)
-            mean_ret = stats.get("Mean Daily Return", 0)
-            vol = stats.get("Daily Volatility", 0)
-            cum_1m = stats.get("1M Cumulative Return", 0)
-            max_dd = stats.get("Max Drawdown", 0)
-            mean_str = f"{mean_ret:.2%}"
-            vol_str = f"{vol:.2%}"
-            cum1m_str = f"{cum_1m:.2%}"
-            maxdd_str = f"{max_dd:.2%}"
-
-            
-            fin_dict = tkr.get_financials(as_dict=True) or {}
-            if fin_dict:
-                latest = max(fin_dict.keys())
-                metrics= fin_dict[latest]
-                rev = metrics.get("TotalRevenue")
-                ni  = metrics.get("NetIncome")
-                rev_str = f"${rev:,.0f}" if isinstance(rev, (int, float)) else "N/A"
-                ni_str  = f"${ni:,.0f}"  if isinstance(ni,  (int, float)) else "N/A"
-                date_str= latest.date().isoformat()
-            else:
-                rev_str = ni_str = date_str = "N/A"
-
-            html = f"""
-            <div class="market-report">
-            <h2 class="mr-title">{ticker.upper()} Market Report</h2>
-
-            <section class="mr-price">
-                <h3>Price & Trend</h3>
-                <p><strong>Current:</strong> ${price:,.2f} 
-                &nbsp;|&nbsp; <strong>Prev Close:</strong> ${prev:,.2f}</p>
-                <p><strong>Trend (1d):</strong> {trend_str}</p>
-                <p><strong>Day Range:</strong> ${day_low:,.2f} – ${day_high:,.2f}</p>
-            </section>
-
-            <section class="mr-stats">
-                <h3>1-Month Statistics</h3>
-                <ul>
-                <li><strong>Mean Daily Return:</strong> {mean_str}</li>
-                <li><strong>Daily Volatility:</strong> {vol_str}</li>
-                <li><strong>Cumulative Return (30d):</strong> {cum1m_str}</li>
-                <li><strong>Max Drawdown:</strong> {maxdd_str}</li>
-                </ul>
-            </section>
-
-            <section class="mr-financials">
-                <h3>Latest Annual Financials ({date_str})</h3>
-                <ul>
-                <li><strong>Total Revenue:</strong> {rev_str}</li>
-                <li><strong>Net Income:</strong> {ni_str}</li>
-                </ul>
-            </section>
-            </div>
-            """
-            return html
-
-        except Exception as e:
-            return f"<p>Error fetching market data for <b>{ticker.upper()}</b>: {e}</p>"
 
     def analyze_sentiment_for_ticker(self, ticker: str, intent: str = None) -> str:
         intent = (intent or "").lower()
@@ -318,29 +168,76 @@ class SentimentAnalyzer:
         </div>
         """
 
-    def train_and_evaluate_for_ticker(self, ticker: str) -> str:
-        sub_df = self.df[self.df['ticker'].str.upper() == ticker.upper()]
-        if sub_df.empty:
-            return f"<p>No data found for ticker: <b>{ticker.upper()}</b>.</p>"
-        X = sub_df["combined_text"]
-        y = sub_df["label"]
-        if len(X) < 10:
-            return f"<p>Not enough data for ticker: <b>{ticker.upper()}</b> to perform training/test evaluation (need at least 10 records).</p>"
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        eval_pipeline = Pipeline([
-            ('tfidf', TfidfVectorizer(tokenizer=custom_tokenizer, stop_words='english')),
-            ('clf', LogisticRegression())
-        ])
-        eval_pipeline.fit(X_train, y_train)
-        y_pred = eval_pipeline.predict(X_test)
-        acc = accuracy_score(y_test, y_pred)
-        report = classification_report(y_test, y_pred)
-        output_html = f"""
-        <div class="evaluation-container">
-          <h2>Training & Evaluation for {ticker.upper()}</h2>
-          <p><strong>Test Accuracy:</strong> {round(acc, 2)}</p>
-          <h3>Classification Report:</h3>
-          <pre>{report}</pre>
+    def search_comments(self, query: str, ticker: str = None, intent: str = None, top_n: int = 10) -> str:
+        """
+        Return the top_n comments most relevant to `query`, ranked by cosine similarity
+        over your rank_pipeline vectors. Optionally filter by ticker and/or sentiment intent.
+        """
+        # 1) Prepare DataFrame
+        filtered_df = self.df.copy()
+        if ticker:
+            print(f"Searching for: {query} for ticker: {ticker}")
+            filtered_df = filtered_df[filtered_df['ticker'].str.upper() == ticker.upper()]
+            if filtered_df.empty:
+                filtered_df = self.df.copy()
+
+        # 2) Compute similarity scores
+        query_vec = self.rank_pipeline.transform([query])[0]
+        similarities = []
+        for idx, row in self.df.iterrows():
+            doc_vec = row["rank_vector"]
+            sim = compute_cosine(np.array(query_vec), np.array(doc_vec))
+            similarities.append(sim)
+        self.df["sim_score"] = similarities
+        results = self.df.sort_values("sim_score", ascending=False)
+
+        # 3) Slice top_n
+        top_df = results.head(top_n)
+
+        # 4) Build HTML
+        posts_html = "<ol>"
+        for _, row in top_df.iterrows():
+            post_id = row.get("id", "unknown")
+            up, down = get_vote_counts(post_id)
+            text = row["combined_text"].strip()
+            highlighted = highlight_top_words(text, set(self.feature_names))
+            expl = explain_post_sentiment(text)
+            expl_div = (
+                f"<a href=\"javascript:void(0)\" onclick=\"toggleImpact('{post_id}')\">[Show Impact]</a>"
+                f"<div id=\"{post_id}\" style=\"display:none; margin:8px 0;\">{expl}</div>"
+            )
+            url_html = f"<br><a href='{row.get('url','')}' target='_blank'>Link</a>" if row.get('url') else ""
+            posts_html += (
+                f"<li>"
+                f"<strong>{row['ticker']}</strong> – {highlighted}{url_html}<br>"
+                f"<em>Score: {row['sim_score']:.2f}</em><br>"
+                f"Upvotes: {up} | Downvotes: {down}<br>"
+                f"{expl_div}"
+                f"</li>"
+            )
+        posts_html += "</ol>"
+
+        # 5) Optional overview header
+        overview = ""
+        if ticker:
+            total = len(filtered_df)
+            pos = (filtered_df.get("final_pred", self._compute_final_predictions(filtered_df)) == 1).sum()
+            neg = total - pos
+            tone = "Positive" if pos > neg else ("Negative" if neg > pos else "Mixed")
+            overview = (
+                f"<h2>{ticker.upper()} – Top {len(top_df)} Relevant Posts</h2>"
+                f"<p><strong>Overall Sentiment:</strong> {tone}</p>"
+                f"<p><strong>Total:</strong> {total}, "
+                f"Positive comments: {pos}, Negative comments:{neg}</p>"
+            )
+            
+        feedback_html = self.get_feedback_for_ticker(ticker)
+
+        return f"""
+        <div class="search-comments">
+          {overview}
+          <h3>Search Results for “{query}”</h3>
+          {posts_html}
+          {feedback_html}
         </div>
         """
-        return output_html

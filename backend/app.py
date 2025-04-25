@@ -6,7 +6,7 @@ from nltk.sentiment.vader import SentimentIntensityAnalyzer
 
 nltk.download('vader_lexicon')
 
-from data_loader import load_data, map_company_to_ticker
+from data_loader import load_data, map_company_to_ticker, valid_ticker
 from preprocessing import weak_label
 from models import create_classification_pipeline, create_ranking_pipeline
 from analysis import SentimentAnalyzer
@@ -42,15 +42,13 @@ def ask():
     if not question:
         return jsonify({"response": "No question provided"}), 400
     
-    ticker = map_company_to_ticker(question)
-    if not ticker:
-        return jsonify({"response": "Company not recognized"}), 400
-    
-    low = question.lower()
-    fallback = ["market", "financial", "report", "return", "price", "overview"]
-    if any(kw in low for kw in fallback):
-        market_html = sentiment_analyzer._render_market_report(ticker)
-        return jsonify({"response": market_html})
+    if request.args.get("ticker", "").strip():
+        ticker = request.args.get("ticker", "").strip().upper()
+    else:
+        ticker = map_company_to_ticker(question)
+        
+    if not valid_ticker(ticker):
+        ticker = None
     
     scores = sid.polarity_scores(question)
     compound = scores['compound']
@@ -61,37 +59,8 @@ def ask():
     else:
         intent = ""
 
-    sentiment_html = sentiment_analyzer.analyze_sentiment_for_ticker(ticker, intent=intent)
+    sentiment_html = sentiment_analyzer.search_comments(question, ticker, intent, 10)
     return jsonify({"response": sentiment_html})
-
-@app.route("/search")
-def search():
-    query = request.args.get("query", "").strip()
-    if not query:
-        return jsonify({"response": "No search query provided"}), 400
-    results_html = sentiment_analyzer.search_documents(query, top_n=10)
-    return jsonify({"results": results_html})
-
-@app.route("/keywords")
-def keywords():
-    ticker = request.args.get("ticker", "").strip()
-    if not ticker:
-        return jsonify({"response": "No ticker provided"}), 400
-    keywords_html = sentiment_analyzer.rank_keywords_for_ticker(ticker, top_n=10)
-    return jsonify({"response": keywords_html})
-
-@app.route("/rank")
-def rank():
-    ranking_html = sentiment_analyzer.rank_stocks()
-    return jsonify({"response": ranking_html})
-
-@app.route("/evaluate")
-def evaluate():
-    ticker = request.args.get("ticker", "").strip()
-    if not ticker:
-        return jsonify({"response": "No ticker provided"}), 400
-    eval_html = sentiment_analyzer.train_and_evaluate_for_ticker(ticker)
-    return jsonify({"response": eval_html})
 
 @app.route("/vote", methods=["POST"])
 def vote():

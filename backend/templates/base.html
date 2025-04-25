@@ -78,14 +78,30 @@
       height: 20px;
       margin-right: 10px;
       object-fit: contain;
+      cursor: pointer;
     }
-    .search-box input {
+    /* Query input grows */
+    #filter-text-val {
+      flex: 1;
       border: none;
       outline: none;
-      flex-grow: 1;
       font-size: 1.1rem;
       color: #1f2937;
       background-color: transparent;
+    }
+    /* Ticker input fixed small width */
+    #ticker-input {
+      flex: 0 0 80px;
+      margin-left: 12px;
+      border: none;
+      outline: none;
+      font-size: 0.95rem;
+      color: #4b5563;
+      background-color: transparent;
+      text-align: center;
+    }
+    #ticker-input::placeholder {
+      color: #9ca3af;
     }
     .answer-box {
       width: 100%;
@@ -197,9 +213,26 @@
     </div>
     <div class="right-panel">
       <div class="search-area">
-        <div class="search-box" onclick="sendFocus()">
-          <img src="{{ url_for('static', filename='images/mag.png') }}" alt="Search" />
-          <input type="text" id="filter-text-val" placeholder="Type a stock-related query..." oninput="filterText()" />
+        <div class="search-box">
+          <img
+            src="{{ url_for('static', filename='images/mag.png') }}"
+            alt="Search"
+            onclick="document.getElementById('filter-text-val').focus()"
+          />
+          <input
+            type="text"
+            id="filter-text-val"
+            placeholder="Type a stock-related query..."
+            oninput="scheduleFilter()"
+            onkeydown="if(event.key==='Enter') filterText()"
+          />
+          <input
+            type="text"
+            id="ticker-input"
+            placeholder="Ticker (opt.)"
+            autocomplete="off"
+            onkeydown="if(event.key==='Enter') filterText()"
+          />
         </div>
         <div id="answer-box" class="answer-box"></div>
       </div>
@@ -222,71 +255,46 @@
       </div>
     </div>
   </div>
+
   <script>
-    function toggleImpact(divId) {
-      var x = document.getElementById(divId);
-      if (x.style.display === "none" || x.style.display === "") {
-        x.style.display = "block";
-      } else {
-        x.style.display = "none";
-      }
-    }
-    
-    function votePost(post_id, vote) {
-      fetch("/vote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ post_id: post_id, vote: vote })
-      })
-      .then(response => response.json())
-      .then(data => {
-        alert(data.response);
-      })
-      .catch(error => {
-        console.error("Error submitting vote:", error);
-        alert("Error submitting vote.");
-      });
-    }
-    
     let debounceTimeout;
-    function answerBoxTemplate(responseText) {
-      return `
-        <div class="card">
-          <h3 class="card-title">Stock Sentiment Analysis</h3>
-          <p class="card-desc">${responseText}</p>
-        </div>
-      `;
-    }
-    
-    function sendFocus() {
-      document.getElementById('filter-text-val').focus();
-    }
-    
-    function filterText() {
+    function scheduleFilter() {
       clearTimeout(debounceTimeout);
-      debounceTimeout = setTimeout(() => {
-        let userQuery = document.getElementById("filter-text-val").value.trim();
-        if (!userQuery) return;
-        fetch("/ask?" + new URLSearchParams({ question: userQuery }).toString())
-          .then(response => response.json())
-          .then(data => {
-            const answerBox = document.getElementById("answer-box");
-            answerBox.innerHTML = "";
-            if (!data.response) {
-              answerBox.innerHTML = "<p class='no-data-text'>No sentiment data available.</p>";
-              return;
-            }
-            let tempDiv = document.createElement("div");
-            tempDiv.innerHTML = answerBoxTemplate(data.response);
-            answerBox.appendChild(tempDiv);
-          })
-          .catch(error => {
-            console.error("Error fetching sentiment:", error);
-            document.getElementById("answer-box").innerHTML = "<p class='error-text'>Error fetching sentiment data.</p>";
-          });
-      }, 500);
+      debounceTimeout = setTimeout(filterText, 500);
     }
-    
+
+    function filterText() {
+      const userQuery = document.getElementById("filter-text-val").value.trim();
+      const ticker    = document.getElementById("ticker-input").value.trim().toUpperCase();
+      if (!userQuery) return;
+
+      const params = new URLSearchParams({ question: userQuery });
+      if (ticker) params.append("ticker", ticker);
+
+      fetch("/ask?" + params.toString())
+        .then(res => res.json())
+        .then(data => {
+          const answerBox = document.getElementById("answer-box");
+          answerBox.innerHTML = "";
+          if (!data.response) {
+            answerBox.innerHTML = "<p class='no-data-text'>No sentiment data available.</p>";
+            return;
+          }
+          const tempDiv = document.createElement("div");
+          tempDiv.innerHTML = `
+            <div class="card">
+              <h3 class="card-title">Stock Sentiment Analysis</h3>
+              <p class="card-desc">${data.response}</p>
+            </div>
+          `;
+          answerBox.appendChild(tempDiv);
+        })
+        .catch(err => {
+          console.error("Error fetching sentiment:", err);
+          document.getElementById("answer-box")
+                  .innerHTML = "<p class='error-text'>Error fetching sentiment data.</p>";
+        });
+    }
     document.getElementById("feedbackForm").addEventListener("submit", function(e) {
       e.preventDefault();
       const ticker = document.getElementById("feedback-ticker").value.trim();
