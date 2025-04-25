@@ -198,21 +198,28 @@ class SentimentAnalyzer:
         posts_html = "<ol>"
         for _, row in top_df.iterrows():
             post_id = row.get("id", "unknown")
-            up, down = get_vote_counts(post_id)
             text = row["combined_text"].strip()
             highlighted = highlight_top_words(text, set(self.feature_names))
             expl = explain_post_sentiment(text)
-            expl_div = (
-                f"<a href=\"javascript:void(0)\" onclick=\"toggleImpact('{post_id}')\">[Show Impact]</a>"
-                f"<div id=\"{post_id}\" style=\"display:none; margin:8px 0;\">{expl}</div>"
+            expl_div_id = f"impact_{post_id}"
+
+            explanation_html = (
+                f"<a href=\"javascript:void(0);\" onclick=\"toggleImpact('{expl_div_id}')\">[Show Impact]</a>"
+                f"<div id=\"{expl_div_id}\" style=\"display:none; margin-top:8px;\">{expl}</div>"
             )
             url_html = f"<br><a href='{row.get('url','')}' target='_blank'>Link</a>" if row.get('url') else ""
+            upvotes, downvotes = get_vote_counts(post_id)
+            vote_html = (
+                f"<p>Upvotes: {upvotes} | Downvotes: {downvotes}</p>"
+                f"<button onclick=\"votePost('{post_id}','up')\">Upvote</button> "
+                f"<button onclick=\"votePost('{post_id}','down')\">Downvote</button>"
+            )
+
             posts_html += (
                 f"<li>"
                 f"<strong>{row['ticker']}</strong> – {highlighted}{url_html}<br>"
                 f"<em>Score: {row['sim_score']:.2f}</em><br>"
-                f"Upvotes: {up} | Downvotes: {down}<br>"
-                f"{expl_div}"
+                f"{vote_html}<br>{explanation_html}"
                 f"</li>"
             )
         posts_html += "</ol>"
@@ -221,8 +228,11 @@ class SentimentAnalyzer:
         overview = ""
         if ticker:
             total = len(filtered_df)
-            pos = (filtered_df.get("final_pred", self._compute_final_predictions(filtered_df)) == 1).sum()
-            neg = total - pos
+            preds = filtered_df.get("final_pred")
+            if preds is None:
+                preds = self._compute_final_predictions(filtered_df)
+            pos = (preds == 1).sum()
+            neg = (preds == 0).sum()
             tone = "Positive" if pos > neg else ("Negative" if neg > pos else "Mixed")
             overview = (
                 f"<h2>{ticker.upper()} – Top {len(top_df)} Relevant Posts</h2>"
@@ -234,10 +244,10 @@ class SentimentAnalyzer:
         feedback_html = self.get_feedback_for_ticker(ticker)
 
         return f"""
-        <div class="search-comments">
-          {overview}
-          <h3>Search Results for “{query}”</h3>
-          {posts_html}
-          {feedback_html}
+        <div class=\"search-comments\">
+        {overview}
+        <h3>Search Results for “{query}”</h3>
+        {posts_html}
+        {feedback_html}
         </div>
         """
