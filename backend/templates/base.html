@@ -235,6 +235,7 @@
           />
         </div>
         <div id="answer-box" class="answer-box"></div>
+        <button id="load-more-btn" style="display:none; margin-top: 16px;" onclick="loadMorePosts()">Load More</button>
       </div>
       <div class="feedback-form">
         <h3>Was this response helpful?</h3>
@@ -262,10 +263,13 @@
       clearTimeout(debounceTimeout);
       debounceTimeout = setTimeout(filterText, 500);
     }
+    let allPosts = [];  // Store fetched posts
+    let currentIndex = 0;
+    const postsPerPage = 10;
 
     function filterText() {
       const userQuery = document.getElementById("filter-text-val").value.trim();
-      const ticker    = document.getElementById("ticker-input").value.trim().toUpperCase();
+      const ticker = document.getElementById("ticker-input").value.trim().toUpperCase();
       if (!userQuery) return;
 
       const params = new URLSearchParams({ question: userQuery });
@@ -276,24 +280,111 @@
         .then(data => {
           const answerBox = document.getElementById("answer-box");
           answerBox.innerHTML = "";
+          currentIndex = 0;
+
           if (!data.response) {
             answerBox.innerHTML = "<p class='no-data-text'>No sentiment data available.</p>";
+            document.getElementById("load-more-btn").style.display = "none";
             return;
           }
-          const tempDiv = document.createElement("div");
-          tempDiv.innerHTML = `
-            <div class="card">
-              <h3 class="card-title">Stock Sentiment Analysis</h3>
-              <p class="card-desc">${data.response}</p>
-            </div>
-          `;
-          answerBox.appendChild(tempDiv);
+
+          // Display the header
+          answerBox.innerHTML = data.header_html;
+          
+          // Store posts for pagination
+          allPosts = data.posts;
+          
+          // Create an element for the posts
+          const postsContainer = document.createElement("ol");
+          answerBox.appendChild(postsContainer);
+          
+          // Render the first batch of posts
+          renderPosts(postsContainer);
+          
+          // Add the footer
+          const footerElement = document.createElement("div");
+          footerElement.innerHTML = data.footer_html;
+          answerBox.appendChild(footerElement);
+          
+          // Show/hide load more button
+          document.getElementById("load-more-btn").style.display = 
+            currentIndex < allPosts.length ? "block" : "none";
         })
-        .catch(err => {
-          console.error("Error fetching sentiment:", err);
-          document.getElementById("answer-box")
-                  .innerHTML = "<p class='error-text'>Error fetching sentiment data.</p>";
+        .catch(error => {
+          console.error("Error fetching data:", error);
+          const answerBox = document.getElementById("answer-box");
+          answerBox.innerHTML = "<p class='error-text'>Error fetching data. Please try again.</p>";
+          document.getElementById("load-more-btn").style.display = "none";
+          allPosts = []; // Reset allPosts to an empty array
         });
+    }
+
+    function renderPosts(container) {
+      const nextPosts = allPosts.slice(currentIndex, currentIndex + postsPerPage);
+      
+      nextPosts.forEach(post => {
+        const li = document.createElement("li");
+        
+        // Create URL HTML if a URL exists
+        const urlHtml = post.url ? `<br><a href='${post.url}' target='_blank'>Link</a>` : "";
+        
+        // Create explanation div
+        const explDivId = `impact_${post.id}`;
+        const explanationHtml = `
+          <a href="javascript:void(0);" onclick="toggleImpact('${explDivId}')">[Show Impact]</a>
+          <div id="${explDivId}" style="display:none; margin-top:8px;">${post.explanation}</div>
+        `;
+        
+        // Create vote HTML
+        const voteHtml = `
+          <p>Upvotes: ${post.upvotes} | Downvotes: ${post.downvotes}</p>
+          <button onclick="votePost('${post.id}','up')">Upvote</button>
+          <button onclick="votePost('${post.id}','down')">Downvote</button>
+        `;
+        
+        // Complete post HTML
+        li.innerHTML = `
+          <strong>${post.ticker}</strong> – ${post.highlighted_text}${urlHtml}<br>
+          <em>Score: ${post.score.toFixed(2)}</em><br>
+          ${voteHtml}<br>${explanationHtml}
+        `;
+        
+        container.appendChild(li);
+      });
+      
+      currentIndex += postsPerPage;
+    }
+
+    function loadMorePosts() {
+      const postsContainer = document.querySelector("#answer-box ol");
+      renderPosts(postsContainer);
+      
+      // Show/hide load more button
+      document.getElementById("load-more-btn").style.display = 
+        currentIndex < allPosts.length ? "block" : "none";
+    }
+
+    function toggleImpact(divId) {
+      const div = document.getElementById(divId);
+      if (div) {
+        div.style.display = div.style.display === 'none' ? 'block' : 'none';
+      }
+    }
+
+    function votePost(postId, voteType) {
+      fetch("/vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ post_id: postId, vote_type: voteType })
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log("Vote registered:", data);
+        // Optionally update the UI to reflect the vote
+      })
+      .catch(error => {
+        console.error("Error voting:", error);
+      });
     }
     document.getElementById("feedbackForm").addEventListener("submit", function(e) {
       e.preventDefault();

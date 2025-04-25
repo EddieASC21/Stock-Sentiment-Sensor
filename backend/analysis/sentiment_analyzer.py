@@ -168,10 +168,11 @@ class SentimentAnalyzer:
         </div>
         """
 
-    def search_comments(self, query: str, ticker: str = None, intent: str = None, top_n: int = 10) -> str:
+    def search_comments(self, query: str, ticker: str = None, intent: str = None, top_n: int = 100) -> dict:
         """
         Return the top_n comments most relevant to `query`, ranked by cosine similarity
         over your rank_pipeline vectors. Optionally filter by ticker and/or sentiment intent.
+        Returns a dictionary with header_html, posts array, and footer_html.
         """
         # 1) Prepare DataFrame
         filtered_df = self.df.copy()
@@ -180,7 +181,7 @@ class SentimentAnalyzer:
             filtered_df = filtered_df[filtered_df['ticker'].str.upper() == ticker.upper()]
             if filtered_df.empty:
                 filtered_df = self.df.copy()
-
+                
         # 2) Compute similarity scores
         query_vec = self.rank_pipeline.transform([query])[0]
         similarities = []
@@ -190,40 +191,32 @@ class SentimentAnalyzer:
             similarities.append(sim)
         self.df["sim_score"] = similarities
         results = self.df.sort_values("sim_score", ascending=False)
-
+        
         # 3) Slice top_n
         top_df = results.head(top_n)
-
-        # 4) Build HTML
-        posts_html = "<ol>"
+        
+        # 4) Extract post data as individual items
+        posts = []
         for _, row in top_df.iterrows():
             post_id = row.get("id", "unknown")
             text = row["combined_text"].strip()
             highlighted = highlight_top_words(text, set(self.feature_names))
             expl = explain_post_sentiment(text)
-            expl_div_id = f"impact_{post_id}"
-
-            explanation_html = (
-                f"<a href=\"javascript:void(0);\" onclick=\"toggleImpact('{expl_div_id}')\">[Show Impact]</a>"
-                f"<div id=\"{expl_div_id}\" style=\"display:none; margin-top:8px;\">{expl}</div>"
-            )
-            url_html = f"<br><a href='{row.get('url','')}' target='_blank'>Link</a>" if row.get('url') else ""
-            upvotes, downvotes = get_vote_counts(post_id)
-            vote_html = (
-                f"<p>Upvotes: {upvotes} | Downvotes: {downvotes}</p>"
-                f"<button onclick=\"votePost('{post_id}','up')\">Upvote</button> "
-                f"<button onclick=\"votePost('{post_id}','down')\">Downvote</button>"
-            )
-
-            posts_html += (
-                f"<li>"
-                f"<strong>{row['ticker']}</strong> – {highlighted}{url_html}<br>"
-                f"<em>Score: {row['sim_score']:.2f}</em><br>"
-                f"{vote_html}<br>{explanation_html}"
-                f"</li>"
-            )
-        posts_html += "</ol>"
-
+            
+            # Create a post object
+            post = {
+                "id": post_id,
+                "ticker": row['ticker'],
+                "text": text,
+                "highlighted_text": highlighted,
+                "explanation": expl,
+                "url": row.get('url', ''),
+                "score": float(row['sim_score']),
+                "upvotes": get_vote_counts(post_id)[0],
+                "downvotes": get_vote_counts(post_id)[1]
+            }
+            posts.append(post)
+        
         # 5) Optional overview header
         overview = ""
         if ticker:
@@ -240,14 +233,23 @@ class SentimentAnalyzer:
                 f"<p><strong>Total:</strong> {total}, "
                 f"Positive comments: {pos}, Negative comments:{neg}</p>"
             )
-            
-        feedback_html = self.get_feedback_for_ticker(ticker)
-
-        return f"""
-        <div class=\"search-comments\">
+        
+        # Create header HTML
+        header_html = f"""
+        <div class="search-comments">
         {overview}
-        <h3>Search Results for “{query}”</h3>
-        {posts_html}
+        <h3>Search Results for "{query}"</h3>
+        """
+        
+        # Create footer HTML
+        feedback_html = self.get_feedback_for_ticker(ticker)
+        footer_html = f"""
         {feedback_html}
         </div>
         """
+        
+        return {
+            "header_html": header_html,
+            "posts": posts,
+            "footer_html": footer_html
+        }

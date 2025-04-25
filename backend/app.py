@@ -49,7 +49,7 @@ def ask():
         
     if not valid_ticker(ticker):
         ticker = None
-    
+        
     scores = sid.polarity_scores(question)
     compound = scores['compound']
     if compound >= 0.05:
@@ -58,9 +58,16 @@ def ask():
         intent = "negative"
     else:
         intent = ""
-
-    sentiment_html = sentiment_analyzer.search_comments(question, ticker, intent, 10)
-    return jsonify({"response": sentiment_html})
+        
+    # Get the separated components
+    result = sentiment_analyzer.search_comments(question, ticker, intent, 100)
+    
+    return jsonify({
+        "response": "Data retrieved successfully",
+        "header_html": result["header_html"],
+        "posts": result["posts"],
+        "footer_html": result["footer_html"]
+    })
 
 @app.route("/vote", methods=["POST"])
 def vote():
