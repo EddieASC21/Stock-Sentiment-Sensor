@@ -149,6 +149,8 @@ class SentimentAnalyzer:
         return output_html
 
     def get_feedback_for_ticker(self, ticker: str) -> str:
+        if ticker is None:
+            return ""
         feedback_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../feedback.csv")
         if not os.path.exists(feedback_file):
             return "<p>No user feedback available for this stock.</p>"
@@ -194,7 +196,7 @@ class SentimentAnalyzer:
         """
         # 1) Prepare DataFrame
         filtered_df = self.df.copy()
-        if ticker:
+        if ticker is not None:
             print(f"Searching for: {query} for ticker: {ticker}")
             filtered_df = filtered_df[filtered_df['ticker'].str.upper() == ticker.upper()]
             if filtered_df.empty:

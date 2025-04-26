@@ -42,10 +42,10 @@ def ask():
     if not question:
         return jsonify({"response": "No question provided"}), 400
     
-    if map_company_to_ticker(question):
+    ticker = request.args.get("ticker", "").strip().upper()
+    
+    if not valid_ticker(ticker):
         ticker = map_company_to_ticker(question)
-    else:
-        ticker = request.args.get("ticker", "").strip().upper()
         
     if not valid_ticker(ticker):
         ticker = None
