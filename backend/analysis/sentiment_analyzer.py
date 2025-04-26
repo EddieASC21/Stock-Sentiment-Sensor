@@ -173,20 +173,6 @@ class SentimentAnalyzer:
           {feedback_html}
         </div>
         """
-        
-    def _validate_string(self, s: str) -> str | None:
-        """
-        Validate if the string is not empty or None.
-        Cleans the string to allow only alphanumerics, punctuation, symbols, and whitespace.
-        """
-        if s is None or s.strip() == "":
-            return None
-
-        allowed = string.ascii_letters + string.digits + string.punctuation + string.whitespace
-        s = ''.join(char for char in s if char in allowed)
-        s = re.sub(r"\s+", " ", s).strip()
-
-        return s if s else None
 
     def search_comments(self, query: str, ticker: str = None, intent: str = None, top_n: int = 100) -> dict:
         """
@@ -231,9 +217,9 @@ class SentimentAnalyzer:
                 print(f"Invalid post ID for row {idx}: {row}")
                 continue
             text = row["combined_text"].strip()
-            highlighted = self._validate_string(highlight_top_words(text, set(self.feature_names)))
-            expl = self._validate_string(explain_post_sentiment(text))
-            url = self._validate_string(row.get("url", ""))
+            highlighted = highlight_top_words(text, set(self.feature_names))
+            expl = explain_post_sentiment(text)
+            url = row.get("url", "")
             
             if highlighted is None or expl is None or url is None:
                 continue
