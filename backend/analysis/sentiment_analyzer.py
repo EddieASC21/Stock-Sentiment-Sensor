@@ -1,6 +1,10 @@
 import numpy as np
 import os
 import pandas as pd
+import re
+import string
+import json
+from flask import jsonify
 from datetime import datetime, timedelta
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
@@ -167,6 +171,20 @@ class SentimentAnalyzer:
           {feedback_html}
         </div>
         """
+        
+    def _validate_string(self, s: str) -> str | None:
+        """
+        Validate if the string is not empty or None.
+        Cleans the string to allow only alphanumerics, punctuation, symbols, and whitespace.
+        """
+        if s is None or s.strip() == "":
+            return None
+
+        allowed = string.ascii_letters + string.digits + string.punctuation + string.whitespace
+        s = ''.join(char for char in s if char in allowed)
+        s = re.sub(r"\s+", " ", s).strip()
+
+        return s if s else None
 
     def search_comments(self, query: str, ticker: str = None, intent: str = None, top_n: int = 100) -> dict:
         """
@@ -181,6 +199,9 @@ class SentimentAnalyzer:
             filtered_df = filtered_df[filtered_df['ticker'].str.upper() == ticker.upper()]
             if filtered_df.empty:
                 filtered_df = self.df.copy()
+                
+        if len(filtered_df) < 100:
+            filtered_df = self.df.copy()
                 
         # 2) Compute similarity scores
         query_vec = self.rank_pipeline.transform([query])[0]
@@ -197,28 +218,49 @@ class SentimentAnalyzer:
         
         # 4) Extract post data as individual items
         posts = []
-        for _, row in top_df.iterrows():
-            post_id = row.get("id", "unknown")
+        for idx, row in top_df.iterrows():
+            post_id_raw = row.get("id")
+            if pd.isna(post_id_raw):
+                post_id = str(idx)  # Fallback to index if 'id' is NaN
+            else:
+                post_id = str(post_id_raw) # Ensure it's a string
+
+            if not post_id:
+                print(f"Invalid post ID for row {idx}: {row}")
+                continue
             text = row["combined_text"].strip()
-            highlighted = highlight_top_words(text, set(self.feature_names))
-            expl = explain_post_sentiment(text)
+            highlighted = self._validate_string(highlight_top_words(text, set(self.feature_names)))
+            expl = self._validate_string(explain_post_sentiment(text))
+            url = self._validate_string(row.get("url", ""))
             
-            # Create a post object
+            if highlighted is None or expl is None or url is None:
+                continue
+            
+            upvotes, downvotes = get_vote_counts(post_id)
+            
+            if not isinstance(upvotes, int) or not isinstance(downvotes, int):
+                print(f"Invalid vote counts for post {post_id}: upvotes={upvotes}, downvotes={downvotes}")
+                continue
+            
+            if not isinstance(float(row['sim_score']), float):
+                print(f"Invalid similarity score for post {post_id}: {row['sim_score']}")
+                continue
+            
             post = {
                 "id": post_id,
                 "ticker": row['ticker'],
-                "text": text,
+                # "text": text,
                 "highlighted_text": highlighted,
                 "explanation": expl,
-                "url": row.get('url', ''),
+                "url": url,
                 "score": float(row['sim_score']),
-                "upvotes": get_vote_counts(post_id)[0],
-                "downvotes": get_vote_counts(post_id)[1]
+                "upvotes": upvotes,
+                "downvotes": downvotes
             }
             posts.append(post)
         
         # 5) Optional overview header
-        overview = " "
+        overview = f"<h2>Top {len(top_df)} Relevant Posts</h2>"
         if ticker:
             total = len(filtered_df)
             preds = filtered_df.get("final_pred")
@@ -245,6 +287,8 @@ class SentimentAnalyzer:
         # Create footer HTML
         feedback_html = self.get_feedback_for_ticker(ticker)
         footer_html = f"""
+        <div>
+          <h3>User Feedback</h3>
         {feedback_html}
         </div>
         """
