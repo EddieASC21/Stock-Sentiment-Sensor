@@ -53,5 +53,12 @@ def valid_ticker(ticker: str) -> Optional[bool]:
     return ticker in alias_map.values()
 
 if __name__ == "__main__":
-    for name in ["apple", "apple inc", "apple hospitality", "pineapple", "pineapple express"]:
-        print(f"{name!r} → {map_company_to_ticker(name)}")
+    # Smoke-test
+    print(f"'apple' → {map_company_to_ticker('apple')}")
+    print(f"'apple inc' → {map_company_to_ticker('apple inc')}")
+    print(f"'apple hospitality' → {map_company_to_ticker('apple hospitality')}")
+    print(f"'pineapple' → {map_company_to_ticker('pineapple')}")
+    print(f"'pineapple express' → {map_company_to_ticker('pineapple express')}")
+    print(f"'who' → {map_company_to_ticker('who')}") # Should now likely be None
+    print(f"'western' → {map_company_to_ticker('western')}") # Example that might have been problematic before
+    print(f"'western petroleum' → {map_company_to_ticker('western petroleum')}")

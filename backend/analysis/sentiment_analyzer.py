@@ -2,7 +2,6 @@ import spacy
 import numpy as np
 import os
 import pandas as pd
-import yfinance as yf
 from datetime import datetime, timedelta
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
@@ -87,6 +86,8 @@ class SentimentAnalyzer:
         return final_preds
 
     def _get_feedback_stats_for_ticker(self, ticker: str):
+        if ticker is None or ticker == "":
+            return None, 0
         feedback_file = os.path.join(os.path.dirname(__file__), "../feedback.csv")
         if not os.path.exists(feedback_file):
             return None, 0
@@ -101,152 +102,9 @@ class SentimentAnalyzer:
         count = len(filtered)
         return avg_rating, count
 
-    def _render_market_report(self, ticker: str) -> str:
-        tkr = yf.Ticker(ticker)
-        try:
-            fast = tkr.fast_info
-            price = fast.get("lastPrice", np.nan)
-            prev = fast.get("previousClose", np.nan)
-            day_low = fast.get("dayLow", np.nan)
-            day_high = fast.get("dayHigh", np.nan)
-            if np.isfinite(price) and np.isfinite(prev) and prev != 0:
-                trend_pct = (price - prev) / prev * 100
-                trend_str = f"{trend_pct:+.2f}%"
-            else:
-                trend_str = "N/A"
-            stats = compute_market_statistics(ticker)
-            mean_str = f"{stats.get('Mean Daily Return',0):.2%}"
-            vol_str = f"{stats.get('Daily Volatility',0):.2%}"
-            cum_str = f"{stats.get('1M Cumulative Return',0):.2%}"
-            dd_str = f"{stats.get('Max Drawdown',0):.2%}"
-            fin = tkr.get_financials(as_dict=True) or {}
-            if fin:
-                latest = max(fin.keys())
-                rev = fin[latest].get("TotalRevenue")
-                ni = fin[latest].get("NetIncome")
-                rev_str = f"${rev:,.0f}" if isinstance(rev,(int,float)) else "N/A"
-                ni_str = f"${ni:,.0f}" if isinstance(ni,(int,float)) else "N/A"
-                date_str = latest.date().isoformat()
-            else:
-                rev_str = ni_str = date_str = "N/A"
-            return f"""
-        <div class="market-report">
-        <h2 class="mr-title">{ticker.upper()} Market Report</h2>
-        <section class="mr-price">
-            <h3>Price & Trend</h3>
-            <p><strong>Current:</strong> ${price:,.2f} &nbsp;|&nbsp; <strong>Prev Close:</strong> ${prev:,.2f}</p>
-            <p><strong>Trend (1d):</strong> {trend_str}</p>
-            <p><strong>Day Range:</strong> ${day_low:,.2f} – ${day_high:,.2f}</p>
-        </section>
-        <section class="mr-stats">
-            <h3>1-Month Statistics</h3>
-            <ul>
-            <li><strong>Mean Daily Return:</strong> {mean_str}</li>
-            <li><strong>Daily Volatility:</strong> {vol_str}</li>
-            <li><strong>Cumulative Return (30d):</strong> {cum_str}</li>
-            <li><strong>Max Drawdown:</strong> {dd_str}</li>
-            </ul>
-        </section>
-        <section class="mr-financials">
-            <h3>Latest Annual Financials ({date_str})</h3>
-            <ul>
-            <li><strong>Total Revenue:</strong> {rev_str}</li>
-            <li><strong>Net Income:</strong> {ni_str}</li>
-            </ul>
-        </section>
-        </div>
-        """
-        except Exception as e:
-            return f"<p>Error fetching market data for <b>{ticker.upper()}</b>: {e}</p>"
-
-    def analyze_sentiment_for_ticker(self, ticker: str, intent: str = None, days: int = 0) -> str:
-        intent = (intent or "").lower()
-        sub_df = self.df[self.df["ticker"].str.upper() == ticker.upper()]
-        if days and not sub_df.empty:
-            cutoff = datetime.now() - timedelta(days=days)
-            sub_df = sub_df[sub_df["created_dt"] >= cutoff]
-        if sub_df.empty:
-            return self._render_market_report(ticker)
-        final_preds = self._compute_final_predictions(sub_df)
-        sub_df = sub_df.copy()
-        sub_df["final_pred"] = final_preds
-        pos_count = (sub_df["final_pred"] == 1).sum()
-        neg_count = (sub_df["final_pred"] == 0).sum()
-        total = pos_count + neg_count
-        if total == 0:
-            return self._render_market_report(ticker)
-        overall_tone = "Positive" if pos_count > neg_count else ("Negative" if neg_count > pos_count else "Mixed")
-        feedback_avg, feedback_count = self._get_feedback_stats_for_ticker(ticker)
-        if feedback_count >= 3 and feedback_avg is not None and feedback_avg < 3.0:
-            overall_tone = "Negative"
-        if intent == "positive":
-            custom_header = f"<h3>You asked about good sentiment on {ticker.upper()}. Out of {total} posts, there are {pos_count} positive.</h3>"
-        elif intent == "negative":
-            custom_header = f"<h3>You asked about bad sentiment on {ticker.upper()}. Out of {total} posts, there are {neg_count} negative.</h3>"
-        else:
-            custom_header = f"<h3>Based on our model, votes, and user feedback, the overall sentiment is {overall_tone.lower()} on {ticker.upper()}.</h3>"
-        if intent == "positive":
-            filtered_df = sub_df[sub_df["final_pred"] == 1]
-            display_note = "<p>Showing only <b>positive</b> posts:</p>"
-        elif intent == "negative":
-            filtered_df = sub_df[sub_df["final_pred"] == 0]
-            display_note = "<p>Showing only <b>negative</b> posts:</p>"
-        else:
-            filtered_df = sub_df
-            display_note = "<p>Showing all posts:</p>"
-        if filtered_df.empty:
-            posts_html = "<p>No posts found for the specified sentiment.</p>"
-        else:
-            posts_html = "<ol>"
-            for i, row in filtered_df.head(5).iterrows():
-                post_class   = "Positive" if row["final_pred"] == 1 else "Negative"
-                full_text    = row["combined_text"].strip()
-                highlighted  = highlight_top_words(full_text, set(self.feature_names))
-                orig_score   = row.get("score")
-                score_html   = (
-                    f"<p><strong>Original Reddit Score:</strong> {orig_score}</p>"
-                    if orig_score is not None else ""
-                )
-                post_id      = row.get("id", f"post_{i}")
-                up, down     = get_vote_counts(post_id)
-                vote_html    = (
-                    f"{score_html}"
-                    f"<p>Upvotes: {up} | Downvotes: {down}</p>"
-                    f"<button onclick=\"votePost('{post_id}','up')\">Upvote</button> "
-                    f"<button onclick=\"votePost('{post_id}','down')\">Downvote</button>"
-                )
-                explanation_msg    = explain_post_sentiment(full_text)
-                explanation_div_id = f"impact_{post_id}"
-                explanation_html   = (
-                    f"<a href='javascript:void(0);' onclick=\"toggleImpact('{explanation_div_id}')\">"
-                    "[Show Impact]</a>"
-                    f"<div id='{explanation_div_id}' style='display:none;margin-top:8px;'>"
-                    f"{explanation_msg}</div>"
-                )
-                url = row.get("url","").strip()
-                url_html = f"<br><a href='{url}' target='_blank'>Reddit Post</a>" if url else ""
-                posts_html += (
-                    f"<li><strong>{post_class}</strong> – {highlighted}"
-                    f"{url_html}<br>{vote_html}<br>{explanation_html}</li>"
-                )
-            posts_html += "</ol>"
-        feedback_html = self.get_feedback_for_ticker(ticker)
-        return f"""
-        <div class="sentiment-container">
-        <h2>{ticker.upper()} Sentiment Analysis</h2>
-        {custom_header}
-        <p><strong>Total relevant posts:</strong> {total}</p>
-        <p><strong>Overall Sentiment:</strong> {overall_tone}</p>
-        <p><strong>Positive Mentions:</strong> {pos_count}</p>
-        <p><strong>Negative Mentions:</strong> {neg_count}</p>
-        {display_note}
-        <h3>Top 5 Relevant Posts:</h3>
-        {posts_html}
-        {feedback_html}
-        </div>
-        """
-
     def get_feedback_for_ticker(self, ticker: str) -> str:
+        if ticker is None or ticker == "":
+            return "<p>No user feedback available for this stock.</p>"
         feedback_file = os.path.join(os.path.dirname(__file__), "../feedback.csv")
         if not os.path.exists(feedback_file):
             return "<p>No user feedback available for this stock.</p>"
@@ -272,24 +130,31 @@ class SentimentAnalyzer:
             filtered_df = filtered_df[filtered_df["ticker"].str.upper() == ticker.upper()]
             if filtered_df.empty:
                 filtered_df = self.df.copy()
-        query = _summarize_query(query)
-        query_vec = self.rank_pipeline.transform([query])[0]
+        consice_query = _summarize_query(query)
+        query_vec = self.rank_pipeline.transform([consice_query])[0]
         sims = [compute_cosine(query_vec, np.array(r)) for r in filtered_df["rank_vector"]]
         filtered_df = filtered_df.assign(sim_score=sims).sort_values("sim_score", ascending=False)
         top_df = filtered_df.head(top_n)
         posts = []
-        for _, row in top_df.iterrows():
-            pid = row.get("id", "unknown")
+        for idx, row in top_df.iterrows():
+            post_id_raw = row.get("id")
+            if pd.isna(post_id_raw):
+                post_id = str(idx)
+            else:
+                post_id = str(post_id_raw) # Ensure it's a string
+            if not post_id:
+                print(f"Invalid post ID for row {idx}: {row}")
+                continue
             text = row["combined_text"].strip()
             posts.append({
-                "id": pid,
+                "id": post_id,
                 "ticker": row["ticker"],
                 "highlighted_text": highlight_top_words(text, set(self.feature_names)),
                 "explanation": explain_post_sentiment(text),
                 "url": row.get("url", ""),
                 "score": float(row["sim_score"]),
-                "upvotes": get_vote_counts(pid)[0],
-                "downvotes": get_vote_counts(pid)[1],
+                "upvotes": get_vote_counts(post_id)[0],
+                "downvotes": get_vote_counts(post_id)[1],
             })
         overview = ""
         if ticker:
