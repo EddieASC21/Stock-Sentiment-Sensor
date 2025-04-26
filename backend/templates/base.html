@@ -1,12 +1,15 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{% block title %}{% endblock %} - StockSentimentSensor</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Kanit&family=Montserrat&family=Open+Sans:wght@500&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Kanit&family=Montserrat&family=Open+Sans:wght@500&display=swap"
+    rel="stylesheet"
+  />
   <style>
     body {
       margin: 0;
@@ -150,8 +153,8 @@
       margin-bottom: 10px;
       font-family: 'Kanit', sans-serif;
     }
-    .feedback-form input, 
-    .feedback-form select, 
+    .feedback-form input,
+    .feedback-form select,
     .feedback-form textarea {
       width: 100%;
       padding: 8px;
@@ -197,6 +200,29 @@
       scrollbar-width: thin;
       scrollbar-color: #dc2626 #f0f0f0;
     }
+
+    /* Time-window dropdown styling */
+    .filter-controls {
+      margin: 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.95rem;
+      color: #374151;
+    }
+    .filter-controls label { font-weight: 500; }
+    .filter-controls select {
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .filter-controls select:focus {
+      outline: none;
+      border-color: #dc2626;
+      box-shadow: 0 0 0 2px rgba(220,38,38,0.2);
+    }
   </style>
 </head>
 <body>
@@ -222,7 +248,7 @@
           <input
             type="text"
             id="filter-text-val"
-            placeholder="Type a stock-related query..."
+            placeholder="Type a stock-related query…"
             oninput="scheduleFilter()"
             onkeydown="if(event.key==='Enter') filterText()"
           />
@@ -234,13 +260,37 @@
             onkeydown="if(event.key==='Enter') filterText()"
           />
         </div>
+
+        <div class="filter-controls">
+          <label for="time-filter">Show posts from:</label>
+          <select id="time-filter" onchange="scheduleFilter()">
+            <option value="0">All time</option>
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="365">Last year</option>
+            <option value="3650">Last 10 years</option>
+          </select>
+        </div>
+
         <div id="answer-box" class="answer-box"></div>
-        <button id="load-more-btn" style="display:none; margin-top: 16px;" onclick="loadMorePosts()">Load More</button>
+        <button
+          id="load-more-btn"
+          style="display:none; margin-top: 16px;"
+          onclick="loadMorePosts()"
+        >
+          Load More
+        </button>
       </div>
+
       <div class="feedback-form">
         <h3>Was this response helpful?</h3>
         <form id="feedbackForm">
-          <input type="text" id="feedback-ticker" placeholder="Ticker (e.g., TSLA)" required />
+          <input
+            type="text"
+            id="feedback-ticker"
+            placeholder="Ticker (e.g., TSLA)"
+            required
+          />
           <select id="feedback-rating" required>
             <option value="">Select Rating...</option>
             <option value="5">5 - Great</option>
@@ -263,7 +313,8 @@
       clearTimeout(debounceTimeout);
       debounceTimeout = setTimeout(filterText, 500);
     }
-    let allPosts = [];  // Store fetched posts
+
+    let allPosts = []; 
     let currentIndex = 0;
     const postsPerPage = 10;
 
@@ -272,8 +323,11 @@
       const ticker = document.getElementById("ticker-input").value.trim().toUpperCase();
       if (!userQuery) return;
 
-      const params = new URLSearchParams({ question: userQuery });
-      if (ticker) params.append("ticker", ticker);
+      const days = document.getElementById("time-filter").value;
+      const params = new URLSearchParams({
+        question: userQuery,
+        days: days
+      });
 
       fetch("/ask?" + params.toString())
         .then(res => res.json())
@@ -288,26 +342,27 @@
             return;
           }
 
-          // Display the header
-          answerBox.innerHTML = data.header_html;
-          
-          // Store posts for pagination
-          allPosts = data.posts;
-          
-          // Create an element for the posts
+          if (data.header_html) {
+            answerBox.innerHTML = data.header_html;
+          }
+
+          allPosts = data.posts || [];
+
           const postsContainer = document.createElement("ol");
           answerBox.appendChild(postsContainer);
-          
+
           // Render the first batch of posts
           renderPosts(postsContainer);
-          
-          // Add the footer
-          const footerElement = document.createElement("div");
-          footerElement.innerHTML = data.footer_html;
-          answerBox.appendChild(footerElement);
-          
+
+          // Add footer_html if provided
+          if (data.footer_html) {
+            const footerElement = document.createElement("div");
+            footerElement.innerHTML = data.footer_html;
+            answerBox.appendChild(footerElement);
+          }
+
           // Show/hide load more button
-          document.getElementById("load-more-btn").style.display = 
+          document.getElementById("load-more-btn").style.display =
             currentIndex < allPosts.length ? "block" : "none";
         })
         .catch(error => {
@@ -315,57 +370,50 @@
           const answerBox = document.getElementById("answer-box");
           answerBox.innerHTML = "<p class='error-text'>Error fetching data. Please try again.</p>";
           document.getElementById("load-more-btn").style.display = "none";
-          allPosts = []; // Reset allPosts to an empty array
+          allPosts = [];
         });
     }
 
     function renderPosts(container) {
       const nextPosts = allPosts.slice(currentIndex, currentIndex + postsPerPage);
-      
+
       nextPosts.forEach(post => {
-        try {
-          const li = document.createElement("li");
-          
-          // Create URL HTML if a URL exists
-          const urlHtml = post.url ? `<br><a href='${post.url}' target='_blank'>Link</a>` : "";
-          
-          // Create explanation div
-          const explDivId = `impact_${post.id}`;
-          const explanationHtml = `
-            <a href="javascript:void(0);" onclick="toggleImpact('${explDivId}')">[Show Impact]</a>
-            <div id="${explDivId}" style="display:none; margin-top:8px;">${post.explanation}</div>
-          `;
-          
-          // Create vote HTML
-          const voteHtml = `
-            <p>Upvotes: ${post.upvotes} | Downvotes: ${post.downvotes}</p>
-            <button onclick="votePost('${post.id}','up')">Upvote</button>
-            <button onclick="votePost('${post.id}','down')">Downvote</button>
-          `;
-          
-          // Complete post HTML
-          li.innerHTML = `
-            <strong>${post.ticker}</strong> – ${post.highlighted_text}${urlHtml}<br>
-            <em>Score: ${post.score.toFixed(2)}</em><br>
-            ${voteHtml}<br>${explanationHtml}
-          `;
-          
-          container.appendChild(li);
-        } catch (err) {
-          console.warn("Skipping post due to error:", err, post);
-          // Optionally log or collect bad post IDs here
-        }
+        const li = document.createElement("li");
+
+        const urlHtml = post.url
+          ? `<br><a href='${post.url}' target='_blank'>Link</a>`
+          : "";
+
+        const explId = `impact_${post.id}`;
+        const explanationHtml = `
+          <a href="javascript:void(0);" onclick="toggleImpact('${explId}')">[Show Impact]</a>
+          <div id="${explId}" style="display:none; margin-top:8px;">${post.explanation}</div>
+        `;
+
+        const voteHtml = `
+          <p>Upvotes: ${post.upvotes} | Downvotes: ${post.downvotes}</p>
+          <button onclick="votePost('${post.id}','up')">Upvote</button>
+          <button onclick="votePost('${post.id}','down')">Downvote</button>
+        `;
+
+        li.innerHTML = `
+          <strong>${post.ticker}</strong> – ${post.highlighted_text}${urlHtml}<br>
+          <em>Score: ${post.score.toFixed(2)}</em><br>
+          ${voteHtml}<br>
+          ${explanationHtml}
+        `;
+
+        container.appendChild(li);
       });
-      
+
       currentIndex += postsPerPage;
     }
 
     function loadMorePosts() {
       const postsContainer = document.querySelector("#answer-box ol");
       renderPosts(postsContainer);
-      
-      // Show/hide load more button
-      document.getElementById("load-more-btn").style.display = 
+
+      document.getElementById("load-more-btn").style.display =
         currentIndex < allPosts.length ? "block" : "none";
     }
 
@@ -380,17 +428,22 @@
       fetch("/vote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ post_id: postId, vote_type: voteType })
+        body: JSON.stringify({
+          post_id: postId,
+          vote: voteType   
+        })
       })
       .then(response => response.json())
       .then(data => {
-        console.log("Vote registered:", data);
-        // Optionally update the UI to reflect the vote
+        alert(data.response);
       })
       .catch(error => {
         console.error("Error voting:", error);
+        alert("Failed to register your vote. Please try again.");
       });
     }
+
+
     document.getElementById("feedbackForm").addEventListener("submit", function(e) {
       e.preventDefault();
       const ticker = document.getElementById("feedback-ticker").value.trim();
