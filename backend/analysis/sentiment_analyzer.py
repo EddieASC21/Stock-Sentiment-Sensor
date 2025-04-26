@@ -9,6 +9,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from sklearn.metrics.pairwise import cosine_similarity
 from models import compute_cosine
 from data_loader import company_map
 from preprocessing.text_processor import custom_tokenizer, weak_label, highlight_top_words, explain_post_sentiment
@@ -132,7 +133,8 @@ class SentimentAnalyzer:
                 filtered_df = self.df.copy()
         consice_query = _summarize_query(query)
         query_vec = self.rank_pipeline.transform([consice_query])[0]
-        sims = [compute_cosine(query_vec, np.array(r)) for r in filtered_df["rank_vector"]]
+        rank_vectors = np.stack(filtered_df["rank_vector"].values)
+        sims = cosine_similarity(query_vec.reshape(1, -1), rank_vectors).flatten()
         filtered_df = filtered_df.assign(sim_score=sims).sort_values("sim_score", ascending=False)
         top_df = filtered_df.head(top_n)
         posts = []

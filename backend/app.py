@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 nltk.download('vader_lexicon')
 
 from data_loader import load_data, map_company_to_ticker, valid_ticker
-from preprocessing import weak_label
+from preprocessing import weak_label, clean_comments
 from models import create_classification_pipeline, create_ranking_pipeline
 from analysis import SentimentAnalyzer
 
@@ -22,6 +22,8 @@ if "combined_text" not in df.columns:
     df["combined_text"] = df["title"] + " " + df["text"]
 df["label"] = df["combined_text"].apply(weak_label)
 df = df.dropna(subset=["label"])
+
+df = clean_comments(df)
 
 # Train pipelines
 clf_pipeline = create_classification_pipeline()
