@@ -378,32 +378,38 @@
       const nextPosts = allPosts.slice(currentIndex, currentIndex + postsPerPage);
 
       nextPosts.forEach(post => {
-        const li = document.createElement("li");
-
-        const urlHtml = post.url
-          ? `<br><a href='${post.url}' target='_blank'>Link</a>`
-          : "";
-
-        const explId = `impact_${post.id}`;
-        const explanationHtml = `
-          <a href="javascript:void(0);" onclick="toggleImpact('${explId}')">[Show Impact]</a>
-          <div id="${explId}" style="display:none; margin-top:8px;">${post.explanation}</div>
-        `;
-
-        const voteHtml = `
-          <p>Upvotes: ${post.upvotes} | Downvotes: ${post.downvotes}</p>
-          <button onclick="votePost('${post.id}','up')">Upvote</button>
-          <button onclick="votePost('${post.id}','down')">Downvote</button>
-        `;
-
-        li.innerHTML = `
-          <strong>${post.ticker}</strong> – ${post.highlighted_text}${urlHtml}<br>
-          <em>Score: ${post.score.toFixed(2)}</em><br>
-          ${voteHtml}<br>
-          ${explanationHtml}
-        `;
-
-        container.appendChild(li);
+        try {
+          const li = document.createElement("li");
+          
+          // Create URL HTML if a URL exists
+          const urlHtml = post.url ? `<br><a href='${post.url}' target='_blank'>Link</a>` : "";
+          
+          // Create explanation div
+          const explDivId = `impact_${post.id}`;
+          const explanationHtml = `
+            <a href="javascript:void(0);" onclick="toggleImpact('${explDivId}')">[Show Impact]</a>
+            <div id="${explDivId}" style="display:none; margin-top:8px;">${post.explanation}</div>
+          `;
+          
+          // Create vote HTML
+          const voteHtml = `
+            <p>Upvotes: ${post.upvotes} | Downvotes: ${post.downvotes}</p>
+            <button onclick="votePost('${post.id}','up')">Upvote</button>
+            <button onclick="votePost('${post.id}','down')">Downvote</button>
+          `;
+          
+          // Complete post HTML
+          li.innerHTML = `
+            <strong>${post.ticker}</strong> – ${post.highlighted_text}${urlHtml}<br>
+            <em>Score: ${post.score.toFixed(2)}</em><br>
+            ${voteHtml}<br>${explanationHtml}
+          `;
+          
+          container.appendChild(li);
+        } catch (err) {
+          console.warn("Skipping post due to error:", err, post);
+          // Optionally log or collect bad post IDs here
+        }
       });
 
       currentIndex += postsPerPage;
