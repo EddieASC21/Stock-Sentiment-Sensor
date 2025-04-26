@@ -12,8 +12,7 @@ if not FILE_PATH.exists():
 with FILE_PATH.open("r", encoding="utf-8") as f:
     raw = json.load(f)
 
-# Normalize into simple { title: ticker } dict
-company_map: dict[str, str] = {}
+company_map: dict[str,str] = {}
 
 if isinstance(raw, dict):
     for key, entry in raw.items():
@@ -23,8 +22,7 @@ if isinstance(raw, dict):
 
 print(f"Loaded {len(company_map)} companies.")
 
-# Build word-based prefix alias map
-alias_map: dict[str, str] = {}
+alias_map: dict[str,str] = {}
 
 sorted_companies = sorted(
     company_map.items(),
@@ -32,33 +30,26 @@ sorted_companies = sorted(
 )
 
 for full_name, ticker in sorted_companies:
+    # strip out punctuation and split into words
     clean = re.sub(r"[^a-z0-9 ]", "", full_name)
     words = clean.split()
     for i in range(1, len(words) + 1):
         alias = " ".join(words[:i])
+        # only set on first encounter
         alias_map.setdefault(alias, ticker)
 
 def map_company_to_ticker(user_query: str) -> Optional[str]:
     q = re.sub(r"[^a-z0-9 ]", "", user_query.lower()).strip()
     if q in alias_map:
         return alias_map[q]
-    # Word-based prefix match
-    query_words = q.split()
-    for i in range(len(query_words), 0, -1):
-        prefix = " ".join(query_words[:i])
-        if prefix in alias_map:
-            return alias_map[prefix]
+    # any alias anywhere
+    for alias, ticker in alias_map.items():
+        if alias in q:
+            return ticker
     return None
 
-def valid_ticker(ticker: str) -> bool:
-    if ticker is None:
-        return False
-    if ticker == "":
-        return False
-    if ticker == "NONE":
-        return False
-    if ticker == "N/A":
-        return False
+
+def valid_ticker(ticker: str) -> Optional[bool]:
     return ticker in alias_map.values()
 
 if __name__ == "__main__":
