@@ -11,7 +11,6 @@ nltk.download('vader_lexicon')
 from data_loader import load_data, map_company_to_ticker, valid_ticker, load_financial_phrasebank
 from preprocessing import clean_comments
 from models import create_classification_pipeline, create_ranking_pipeline
-import sky
 from analysis import SentimentAnalyzer
 
 app = Flask(__name__)
