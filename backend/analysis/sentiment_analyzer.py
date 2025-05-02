@@ -2,7 +2,6 @@ import spacy
 import numpy as np
 import os
 import pandas as pd
-from datetime import datetime, timedelta
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.pipeline import Pipeline
@@ -10,9 +9,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from sklearn.metrics.pairwise import cosine_similarity
-from models import compute_cosine
-from data_loader import company_map
-from preprocessing.text_processor import custom_tokenizer, weak_label, highlight_top_words, explain_post_sentiment
+from preprocessing.text_processor import custom_tokenizer, highlight_top_words, explain_post_sentiment
 from helpers.vote_helper import get_vote_counts
 
 nlp_spacy = spacy.load("en_core_web_sm")
@@ -32,29 +29,8 @@ def _summarize_query(query: str) -> str:
     else:
         return query
 
-def compute_market_statistics(ticker: str) -> dict:
-    end = datetime.now()
-    start = end - timedelta(days=30)
-    hist = yf.Ticker(ticker).history(start=start, end=end)
-    if hist.empty:
-        return {}
-    hist["ret"] = hist["Close"].pct_change().fillna(0)
-    mean_ret = hist["ret"].mean()
-    vol = hist["ret"].std()
-    cum_return = hist["Close"].iloc[-1] / hist["Close"].iloc[0] - 1
-    cumprod = (1 + hist["ret"]).cumprod()
-    running_max = cumprod.cummax()
-    drawdowns = (cumprod - running_max) / running_max
-    max_dd = drawdowns.min()
-    return {
-        "Mean Daily Return": mean_ret,
-        "Daily Volatility": vol,
-        "1M Cumulative Return": cum_return,
-        "Max Drawdown": max_dd
-    }
-
 class SentimentAnalyzer:
-    def __init__(self, df, clf_pipeline, rank_pipeline):
+    def __init__(self, df, clf_pipeline, rank_pipeline, vectorizer):
         self.df = df.copy()
         self.clf_pipeline = clf_pipeline
         self.rank_pipeline = rank_pipeline
@@ -65,25 +41,48 @@ class SentimentAnalyzer:
             self.df["created_dt"] = pd.to_datetime(self.df["created"], errors="coerce")
         else:
             self.df["created_dt"] = pd.Timestamp.now()
-        self.vectorizer = self.clf_pipeline.named_steps["tfidf"]
-        self.classifier = self.clf_pipeline.named_steps["clf"]
+        self.vectorizer = vectorizer
         self.feature_names = self.vectorizer.get_feature_names_out()
-        self.coeffs = self.classifier.coef_[0]
 
     def _compute_final_predictions(self, sub_df):
+        # Get base predictions as strings
         base_preds = self.clf_pipeline.predict(sub_df["combined_text"])
         final_preds = base_preds.copy()
+        
+        # Create a mapping for string labels to numbers
+        label_to_num = {
+            'negative': 0,
+            'neutral': 1,
+            'positive': 2
+        }
+        
+        # Reverse mapping to convert back to strings
+        num_to_label = {
+            0: 'negative',
+            1: 'neutral',
+            2: 'positive'
+        }
+        
         for idx in range(len(sub_df)):
             text = sub_df.iloc[idx]["combined_text"]
             sentences = [s.strip() for s in text.split('.') if s.strip()]
+            current_pred = label_to_num[base_preds[idx]]
+            
             if sentences and min(self.sid.polarity_scores(s)["compound"] for s in sentences) < -0.05:
-                final_preds[idx] = 0
+                current_pred = 0  # Set to negative
+            
+            # Apply vote count rules
             post_id = sub_df.iloc[idx].get("id", f"post_{idx}")
             up, down = get_vote_counts(post_id)
+            
             if down >= up + 5:
-                final_preds[idx] = 0
+                current_pred = 0  # Set to negative
             elif up >= down + 3:
-                final_preds[idx] = 1
+                current_pred = 2  # Set to positive
+            
+            # Convert back to string label
+            final_preds[idx] = num_to_label[current_pred]
+        
         return final_preds
 
     def _get_feedback_stats_for_ticker(self, ticker: str):
@@ -152,8 +151,9 @@ class SentimentAnalyzer:
                 "id": post_id,
                 "ticker": row["ticker"],
                 "highlighted_text": highlight_top_words(text, set(self.feature_names)),
-                "explanation": explain_post_sentiment(text),
+                "explanation": explain_post_sentiment(text, self.clf_pipeline),
                 "url": row.get("url", ""),
+                "sentiment": row.get("label", "unknown"),
                 "score": float(row["sim_score"]),
                 "upvotes": get_vote_counts(post_id)[0],
                 "downvotes": get_vote_counts(post_id)[1],
@@ -162,13 +162,28 @@ class SentimentAnalyzer:
         if ticker:
             total = len(filtered_df)
             final_preds = self._compute_final_predictions(filtered_df)
-            pos = (final_preds == 1).sum()
-            neg = (final_preds == 0).sum()
-            tone = "Positive" if pos > neg else "Negative" if neg > pos else "Mixed"
+            pos = sum(pred == 'positive' for pred in final_preds)
+            neut = sum(pred == 'neutral' for pred in final_preds)
+            neg = sum(pred == 'negative' for pred in final_preds)
+            
+            pos_percent = (pos / total) * 100 if total > 0 else 0
+            neg_percent = (neg / total) * 100 if total > 0 else 0
+            if pos > neg * 2 and pos_percent > 60:
+                tone = "Strongly Positive"
+            elif pos > neg and pos_percent > 40:
+                tone = "Positive"
+            elif neg > pos * 2 and neg_percent > 60:
+                tone = "Strongly Negative"
+            elif neg > pos and neg_percent > 40:
+                tone = "Negative"
+            elif neut > (pos + neg):
+                tone = "Mostly Neutral"
+            else:
+                tone = "Mixed"
             overview = (
                 f"<h2>{ticker.upper()} – Top {len(top_df)} Posts</h2>"
                 f"<p><strong>Overall Sentiment:</strong> {tone}</p>"
-                f"<p><strong>Total:</strong> {total}, Positive: {pos}, Negative: {neg}</p>"
+                f"<p><strong>Total:</strong> {total}, Positive: {pos}, Negative: {neg} and Neutral: {neut}</p>"
             )
         header_html = f"<div class='search-comments'>{overview}<h3>Search Results for “{query}”</h3>"
         fb_avg, fb_n = self._get_feedback_stats_for_ticker(ticker)

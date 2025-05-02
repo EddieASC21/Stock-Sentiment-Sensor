@@ -4,7 +4,7 @@ import pandas as pd
 
 def load_data():
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    json_file_path = os.path.join(current_dir, "../init.json")
+    json_file_path = os.path.join(current_dir, "../init copy.json")
     
     with open(json_file_path, 'r', encoding='utf-8') as infile:
         raw_data = json.load(infile)
@@ -32,3 +32,12 @@ def load_data():
     df = pd.DataFrame(processed_records)
     df["combined_text"] = df["title"] + " " + df["text"]
     return df
+
+def load_financial_phrasebank(file_path):
+    data = []
+    with open(file_path, 'r', encoding='latin-1') as f:
+        for line in f:
+            if '@' in line:  # Check if the line has the expected format
+                text, label = line.strip().split('@')
+                data.append((text.strip(), label.strip()))
+    return pd.DataFrame(data, columns=['text', 'label'])

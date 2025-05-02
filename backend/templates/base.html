@@ -398,7 +398,12 @@
         `;
 
         li.innerHTML = `
-          <strong>${post.ticker}</strong> – ${post.highlighted_text}${urlHtml}<br>
+          <div class="sentiment-post">
+            <span class="sentiment-label"><strong>Sentiment:</strong> <span class="sentiment-value ${post.sentiment.toLowerCase()}">${post.sentiment}</span></span>
+            <span class="separator">–</span>
+            <span class="post-content">${post.highlighted_text}</span>
+            ${urlHtml}
+          </div><br>
           <em>Score: ${post.score.toFixed(2)}</em><br>
           ${voteHtml}<br>
           ${explanationHtml}

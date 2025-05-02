@@ -1,7 +1,7 @@
 import spacy
 import pandas as pd
 import re
-from data_loader import load_data
+from collections import Counter
 
 nlp_spacy = spacy.load("en_core_web_sm")
 
@@ -9,39 +9,6 @@ def custom_tokenizer(text):
     doc = nlp_spacy(text)
     tokens = [token.lemma_.lower() for token in doc if not token.is_stop and not token.is_punct]
     return tokens
-
-extended_positive = {
-    "bullish": ["bullish", "optimistic", "confident", "upbeat", "growth", "gain", "soar", "strong", "improving", "resilient"],
-    "buy":     ["buy", "purchase", "accumulate", "long", "invest", "hold"],
-    "moon":    ["moon", "rocket", "rally", "surge", "explode", "skyrocket"],
-    "call":    ["call", "calls", "upgrade", "outperform", "positive", "improve"]
-}
-
-extended_negative = {
-    "bearish": ["bearish", "pessimistic", "uncertain", "fear", "down", "decline", "drop", "weak", "struggling"],
-    "sell":    ["sell", "dump", "liquidate", "short", "divest"],
-    "bad":     ["bad", "weak", "poor", "loss", "fall", "slump"],
-    "put":     ["put", "puts", "downgrade", "underperform", "negative"]
-}
-
-def flatten_syns(syn_dict):
-    out = set()
-    for main_word, synonyms in syn_dict.items():
-        out.add(main_word)
-        out.update(synonyms)
-    return list(out)
-
-pos_keywords = flatten_syns(extended_positive)
-neg_keywords = flatten_syns(extended_negative)
-
-def weak_label(text):
-    lower_text = text.lower()
-    if any(word in lower_text for word in pos_keywords):
-        return 1
-    elif any(word in lower_text for word in neg_keywords):
-        return 0
-    else:
-        return None
 
 def highlight_top_words(text, top_words):
     tokens = text.split()
@@ -54,18 +21,49 @@ def highlight_top_words(text, top_words):
             new_tokens.append(t)
     return " ".join(new_tokens)
 
-def explain_post_sentiment(post_text):
-    tokens = [t.lower().strip(".,!?;:") for t in post_text.split()]
-    pos_found = {t for t in tokens if t in pos_keywords}
-    neg_found = {t for t in tokens if t in neg_keywords}
-    explanation_parts = []
-    if pos_found:
-        explanation_parts.append("Positive keywords: " + ", ".join(pos_found))
-    if neg_found:
-        explanation_parts.append("Negative keywords: " + ", ".join(neg_found))
-    if not explanation_parts:
-        return "No significant sentiment keywords found."
-    return " | ".join(explanation_parts)
+def explain_post_sentiment(post_text, clf_pipeline):
+    try:
+        # Use the pipeline to predict
+        prediction = clf_pipeline.predict([post_text])[0]
+        
+        # Get probability scores if available
+        try:
+            probas = clf_pipeline.predict_proba([post_text])[0]
+            confidence = max(probas) * 100
+            confidence_str = f" (confidence: {confidence:.1f}%)"
+        except:
+            confidence_str = ""
+        
+        # Get TF-IDF vectorizer from pipeline
+        vectorizer = clf_pipeline.named_steps['tfidf']
+        tfidf_vector = vectorizer.transform([post_text])
+        
+        # Get feature names
+        feature_names = vectorizer.get_feature_names_out()
+        tfidf_scores = tfidf_vector.toarray()[0]
+        
+        # Sort indices by TF-IDF score (highest first)
+        sorted_indices = tfidf_scores.argsort()[::-1]
+        
+        # Get top 5 terms with non-zero weights
+        key_terms = []
+        for idx in sorted_indices:
+            if tfidf_scores[idx] > 0 and len(key_terms) < 5:
+                key_terms.append(feature_names[idx])
+            if len(key_terms) >= 5:
+                break
+        
+        # Build explanation
+        explanation = f"Sentiment: {prediction}{confidence_str}\n"
+        if key_terms:
+            explanation += "Key terms: " + ", ".join(key_terms)
+        else:
+            explanation += "No key terms identified."
+        
+        return explanation
+    
+    except Exception as e:
+        return "No explanation available due to error"
 
 # Example stock/company keywords
 STOCK_KEYWORDS = [

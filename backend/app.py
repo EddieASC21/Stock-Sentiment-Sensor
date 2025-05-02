@@ -7,9 +7,9 @@ from datetime import datetime, timedelta
 
 nltk.download('vader_lexicon')
 
-from data_loader import load_data, map_company_to_ticker, valid_ticker
-from preprocessing import weak_label, clean_comments
-from models import create_classification_pipeline, create_ranking_pipeline
+from data_loader import load_data, map_company_to_ticker, valid_ticker, load_financial_phrasebank
+from preprocessing import clean_comments
+from models import create_classification_pipeline, create_ranking_pipeline, highlight_tfidf_vectorizer
 from analysis import SentimentAnalyzer
 
 app = Flask(__name__)
@@ -20,20 +20,24 @@ sid = SentimentIntensityAnalyzer()
 df = load_data()
 if "combined_text" not in df.columns:
     df["combined_text"] = df["title"] + " " + df["text"]
-df["label"] = df["combined_text"].apply(weak_label)
-df = df.dropna(subset=["label"])
+sentiment_df = load_financial_phrasebank('Sentences_75Agree.txt')
+highlight_tfidf_vectorizer = highlight_tfidf_vectorizer()
+highlight_tfidf_vectorizer.fit(df["combined_text"])
 
 df = clean_comments(df)
 
 # Train pipelines
 clf_pipeline = create_classification_pipeline()
-clf_pipeline.fit(df["combined_text"], df["label"])
+clf_pipeline.fit(sentiment_df["text"], sentiment_df["label"])
+
+df['label'] = clf_pipeline.predict(df["combined_text"])
+df = df.dropna(subset=["label"])
 
 rank_pipeline = create_ranking_pipeline()
 rank_vectors = rank_pipeline.fit_transform(df["combined_text"])
 df["rank_vector"] = list(rank_vectors)
 
-sentiment_analyzer = SentimentAnalyzer(df, clf_pipeline, rank_pipeline)
+sentiment_analyzer = SentimentAnalyzer(df, clf_pipeline, rank_pipeline, highlight_tfidf_vectorizer)
 
 
 @app.route("/")

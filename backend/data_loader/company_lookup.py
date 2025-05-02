@@ -57,8 +57,8 @@ if __name__ == "__main__":
     print(f"'apple' → {map_company_to_ticker('apple')}")
     print(f"'apple inc' → {map_company_to_ticker('apple inc')}")
     print(f"'apple hospitality' → {map_company_to_ticker('apple hospitality')}")
-    print(f"'pineapple' → {map_company_to_ticker('pineapple')}")
-    print(f"'pineapple express' → {map_company_to_ticker('pineapple express')}")
+    print(f"'pineapple' → {map_company_to_ticker('pineapple')}") # Should map to Pinapple Inc.
+    print(f"'pineapple express' → {map_company_to_ticker('pineapple express')}") # Should map to Pineapple Express Cannabis
     print(f"'who' → {map_company_to_ticker('who')}") # Should now likely be None
     print(f"'western' → {map_company_to_ticker('western')}") # Example that might have been problematic before
     print(f"'western petroleum' → {map_company_to_ticker('western petroleum')}")
