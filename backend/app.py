@@ -39,7 +39,6 @@ df["rank_vector"] = list(rank_vectors)
 
 sentiment_analyzer = SentimentAnalyzer(df, clf_pipeline, rank_pipeline, highlight_tfidf_vectorizer)
 
-
 @app.route("/")
 def home():
     return render_template("base.html", title="Stock Sentiment, Search & Keyword Ranking App")
