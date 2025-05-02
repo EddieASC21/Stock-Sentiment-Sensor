@@ -21,8 +21,8 @@ df = load_data()
 if "combined_text" not in df.columns:
     df["combined_text"] = df["title"] + " " + df["text"]
 sentiment_df = load_financial_phrasebank('Sentences_75Agree.txt')
-highlight_tfidf_vectorizer = highlight_tfidf_vectorizer()
-highlight_tfidf_vectorizer.fit(df["combined_text"])
+tfidf_vectorizer = highlight_tfidf_vectorizer()
+tfidf_vectorizer.fit(df["combined_text"])
 
 df = clean_comments(df)
 
@@ -37,7 +37,7 @@ rank_pipeline = create_ranking_pipeline()
 rank_vectors = rank_pipeline.fit_transform(df["combined_text"])
 df["rank_vector"] = list(rank_vectors)
 
-sentiment_analyzer = SentimentAnalyzer(df, clf_pipeline, rank_pipeline, highlight_tfidf_vectorizer)
+sentiment_analyzer = SentimentAnalyzer(df, clf_pipeline, rank_pipeline, tfidf_vectorizer)
 
 @app.route("/")
 def home():
