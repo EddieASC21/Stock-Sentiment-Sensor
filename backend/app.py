@@ -4,12 +4,14 @@ from flask_cors import CORS
 import nltk
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from datetime import datetime, timedelta
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 nltk.download('vader_lexicon')
 
 from data_loader import load_data, map_company_to_ticker, valid_ticker, load_financial_phrasebank
 from preprocessing import clean_comments
-from models import create_classification_pipeline, create_ranking_pipeline, highlight_tfidf_vectorizer
+from models import create_classification_pipeline, create_ranking_pipeline
+import sky
 from analysis import SentimentAnalyzer
 
 app = Flask(__name__)
@@ -21,7 +23,7 @@ df = load_data()
 if "combined_text" not in df.columns:
     df["combined_text"] = df["title"] + " " + df["text"]
 sentiment_df = load_financial_phrasebank('Sentences_75Agree.txt')
-tfidf_vectorizer = highlight_tfidf_vectorizer()
+tfidf_vectorizer = TfidfVectorizer(ngram_range=(1, 2), max_features=5000)
 tfidf_vectorizer.fit(df["combined_text"])
 
 df = clean_comments(df)

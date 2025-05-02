@@ -23,9 +23,6 @@ def create_ranking_pipeline():
         ('tfidf', TfidfVectorizer(tokenizer=custom_tokenizer, stop_words='english')),
         ('svd', TruncatedSVD(n_components=50))
     ])
-    
-def highlight_tfidf_vectorizer():
-    return TfidfVectorizer(ngram_range=(1, 2), max_features=5000)
 
 def compute_cosine(v1, v2):
     return sk_cosine_similarity(v1.reshape(1, -1), v2.reshape(1, -1))[0][0]
